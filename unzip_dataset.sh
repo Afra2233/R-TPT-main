@@ -21,52 +21,54 @@
 
 module add anaconda3/2022.05
 source activate rtpt
-set -e
 
-DATA_DIR="/scratch/hpc/07/zhang303/R-TPT-main/dataset/ucf101"
 
 echo "Job started on $(hostname)"
 echo "Start time: $(date)"
 
-cd "$DATA_DIR"
+DATA_DIR="/scratch/hpc/07/zhang303/R-TPT-main/dataset/ucf101"
+FILE_ID="1I0S0q91hJfsV9Gf4xDIjgDq4AqBNJb1y"
+
+mkdir -p "$DATA_DIR"
+cd "$DATA_DIR" || {
+    echo "ERROR: Cannot cd to $DATA_DIR"
+    exit 1
+}
 
 echo "Current directory: $(pwd)"
-echo "Files before unzip:"
+
+# Make sure gdown is available
+python -m pip install --user gdown
+
+echo "Start downloading UCF101 from Google Drive..."
+python -m gdown --id "$FILE_ID"
+
+echo "Download finished."
+echo "Files in directory:"
 ls -lh
 
-echo "Unzipping UCF-101-midframes.zip..."
-unzip -q UCF-101-midframes.zip
-
-echo "Files after unzip:"
-ls -lh
-
-echo "Done."
 echo "End time: $(date)"
+
+# set -e
+
+# DATA_DIR="/scratch/hpc/07/zhang303/R-TPT-main/dataset/ucf101"
 
 # echo "Job started on $(hostname)"
 # echo "Start time: $(date)"
 
-# DATA_DIR="/scratch/hpc/07/zhang303/R-TPT-main/dataset/ucf101"
-# FILE_ID="10Jqome3vtUA2keJkNanAiFpgbyC9Hc2O"
-
-# mkdir -p "$DATA_DIR"
-# cd "$DATA_DIR" || {
-#     echo "ERROR: Cannot cd to $DATA_DIR"
-#     exit 1
-# }
+# cd "$DATA_DIR"
 
 # echo "Current directory: $(pwd)"
-
-# # Make sure gdown is available
-# python -m pip install --user gdown
-
-# echo "Start downloading UCF101 from Google Drive..."
-# python -m gdown --id "$FILE_ID"
-
-# echo "Download finished."
-# echo "Files in directory:"
+# echo "Files before unzip:"
 # ls -lh
 
+# echo "Unzipping UCF-101-midframes.zip..."
+# unzip -q UCF-101-midframes.zip
+
+# echo "Files after unzip:"
+# ls -lh
+
+# echo "Done."
 # echo "End time: $(date)"
 
 # ======================caltech-101 =============================

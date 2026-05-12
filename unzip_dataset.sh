@@ -19,6 +19,9 @@
 #SBATCH --output=download_ucf101_%j.out
 #SBATCH --error=download_ucf101_%j.err
 
+module add anaconda3/2022.05
+source activate rtpt
+
 echo "Job started on $(hostname)"
 echo "Start time: $(date)"
 

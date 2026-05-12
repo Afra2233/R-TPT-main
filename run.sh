@@ -2,7 +2,7 @@
 #SBATCH --job-name=rtpt_clean
 #SBATCH -p gpu-medium
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:tesla_v100-pcie-32gb:1
 #SBATCH --time=48:00:00
 #SBATCH --mem=96G
 #SBATCH --cpus-per-task=8

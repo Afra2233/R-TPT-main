@@ -140,13 +140,22 @@ path_dict = {
     "eurosat": ["2750", "eurosat/split_zhou_EuroSAT.json"]
 }
 
+# def build_fewshot_dataset(set_id, root, transform, mode='train', n_shot=None):
+#     if set_id.lower() == 'aircraft':
+#         return Aircraft(root, mode, n_shot, transform)
+#     path_suffix, json_path = path_dict[set_id.lower()]
+#     image_path = os.path.join(root, path_suffix)
+#     return BaseJsonDataset(image_path, json_path, mode, n_shot, transform)
+
 def build_fewshot_dataset(set_id, root, transform, mode='train', n_shot=None):
     if set_id.lower() == 'aircraft':
         return Aircraft(root, mode, n_shot, transform)
+
     path_suffix, json_path = path_dict[set_id.lower()]
     image_path = os.path.join(root, path_suffix)
-    return BaseJsonDataset(image_path, json_path, mode, n_shot, transform)
+    json_path = os.path.join(os.path.dirname(root), json_path)
 
+    return BaseJsonDataset(image_path, json_path, mode, n_shot, transform)
 
 
 class Aircraft(Dataset):

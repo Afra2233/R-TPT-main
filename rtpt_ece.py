@@ -121,7 +121,33 @@ def dirichlet_center_consistency_loss(logits, dir_temp=1.0, alpha_offset=1.0):
     loss_dir = torch.nan_to_num(loss_dir, nan=0.0, posinf=1e4, neginf=0.0)
 
     return loss_dir, alpha
+def dirichlet_reliable_anchor_loss(logits_views, anchor_logits, dir_temp=1.0, alpha_offset=1.0):
+    """
+    Align all augmented-view Dirichlet distributions to a reliable-view anchor.
 
+    logits_views: [N, C], logits of all augmented views during TTA
+    anchor_logits: [K, C], logits of reliable views before TTA
+    """
+    alpha_views = logits_to_dirichlet_alpha(
+        logits_views,
+        dir_temp=dir_temp,
+        alpha_offset=alpha_offset
+    )
+
+    with torch.no_grad():
+        alpha_anchor = logits_to_dirichlet_alpha(
+            anchor_logits,
+            dir_temp=dir_temp,
+            alpha_offset=alpha_offset
+        )
+        alpha_ref = alpha_anchor.mean(dim=0, keepdim=True)
+
+    alpha_ref = alpha_ref.expand_as(alpha_views).contiguous()
+
+    loss_dir = dirichlet_kl(alpha_views, alpha_ref, reduction='batchmean')
+    loss_dir = torch.nan_to_num(loss_dir, nan=0.0, posinf=1e4, neginf=0.0)
+
+    return loss_dir, alpha_views
 
 def evidence_penalty(alpha, mode='mean_total'):
     """
@@ -183,7 +209,7 @@ def compute_ece(confidences, corrects, n_bins=15):
 #         loss.backward()
 #         optimizer.step()
 #     return
-def test_time_tuning(model, inputs, optimizer, scaler, args):
+def test_time_tuning(model, inputs, optimizer, scaler, args, anchor_logits=None):
     selected_idx = None
 
     for j in range(args.tta_steps):
@@ -206,11 +232,19 @@ def test_time_tuning(model, inputs, optimizer, scaler, args):
 
         # Dirichlet consistency across selected augmented views
         if args.dirichlet_consistency:
-            loss_dir, alpha = dirichlet_center_consistency_loss(
-                output_full.float(),
-                dir_temp=args.dir_temp,
-                alpha_offset=args.alpha_offset
-            )
+            if args.dirichlet_reliable_anchor and anchor_logits is not None:
+                loss_dir, alpha = dirichlet_reliable_anchor_loss(
+                    output_full.float(),
+                    anchor_logits.float(),
+                    dir_temp=args.dir_temp,
+                    alpha_offset=args.alpha_offset
+                )
+            else:
+                loss_dir, alpha = dirichlet_center_consistency_loss(
+                    output_full.float(),
+                    dir_temp=args.dir_temp,
+                    alpha_offset=args.alpha_offset
+                )
 
             loss = loss + args.lambda_dir * loss_dir
 
@@ -434,13 +468,39 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
             model.reset()
         optimizer.load_state_dict(optim_state)
 
+        # with torch.no_grad():
+        #     clip_output = model(image)
+        #     clip_features, _, _ = model.forward_features(images)
+        #     clip_outputs = model(images)
+
+        # assert args.tta_steps > 0
+        # test_time_tuning(model, images, optimizer, scaler, args)
         with torch.no_grad():
             clip_output = model(image)
             clip_features, _, _ = model.forward_features(images)
             clip_outputs = model(images)
 
+        sim_matrix_images = torch.bmm(
+            clip_features.unsqueeze(0),
+            clip_features.unsqueeze(0).permute(0, 2, 1)
+        )
+        score = get_top_sim(sim_matrix_images)
+
+        anchor_logits = None
+        if args.dirichlet_reliable_anchor:
+            k_anchor = min(args.dir_anchor_k, clip_outputs.size(0))
+            reliable_idx = torch.argsort(score, descending=True)[:k_anchor]
+            anchor_logits = clip_outputs[reliable_idx].detach()
+
         assert args.tta_steps > 0
-        test_time_tuning(model, images, optimizer, scaler, args)
+        test_time_tuning(
+            model,
+            images,
+            optimizer,
+            scaler,
+            args,
+            anchor_logits=anchor_logits
+)
         with torch.no_grad():
             tuned_outputs = model(images)
         
@@ -601,4 +661,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--rtpt_tau', type=float, default=0.01,
                         help='temperature for R-TPT ensemble weights')
+    parser.add_argument('--dirichlet_reliable_anchor', action='store_true', default=False,
+                    help='use R-TPT reliable views as Dirichlet anchor')
+
+    parser.add_argument('--dir_anchor_k', type=int, default=5,
+                    help='number of reliable views used to build Dirichlet anchor')
     main()

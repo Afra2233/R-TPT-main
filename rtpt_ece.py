@@ -455,6 +455,16 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
 
         score = get_top_sim(sim_matrix_images)
 
+        # if args.dirichlet_weight:
+        #     alpha = logits_to_dirichlet_alpha(
+        #         tuned_outputs.float(),
+        #         dir_temp=args.dir_temp,
+        #         alpha_offset=args.alpha_offset
+        #     )
+        #     alpha0 = alpha.sum(dim=-1)
+        #     evidence_score = torch.log(alpha0 + 1e-6)
+
+        #     score = normalize_score(score) + args.dir_weight_beta * normalize_score(evidence_score)
         if args.dirichlet_weight:
             alpha = logits_to_dirichlet_alpha(
                 tuned_outputs.float(),
@@ -464,8 +474,8 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
             alpha0 = alpha.sum(dim=-1)
             evidence_score = torch.log(alpha0 + 1e-6)
 
-            score = normalize_score(score) + args.dir_weight_beta * normalize_score(evidence_score)
-
+            # Keep original R-TPT score scale; add only a small evidence correction.
+            score = score + args.dir_weight_beta * 0.01 * normalize_score(evidence_score)
         weight = torch.nn.functional.softmax(score / args.rtpt_tau, dim=-1)
         tta_output = torch.bmm(
             weight.unsqueeze(-1).transpose(1, 2),

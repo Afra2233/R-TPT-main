@@ -26,8 +26,8 @@ source activate rtpt
 echo "Job started on $(hostname)"
 echo "Start time: $(date)"
 
-DATA_DIR="/scratch/hpc/07/zhang303/R-TPT-main/dataset/dtd"
-FILE_ID="1u3_QfB467jqHgNXC00UIzbLZRQCg2S7x"
+DATA_DIR="/scratch/hpc/07/zhang303/R-TPT-main/dataset/eurosat"
+FILE_ID="1Ip7yaCWFi0eaOFUGga0lUdVi_DDQth1o"
 
 mkdir -p "$DATA_DIR"
 cd "$DATA_DIR" || {

@@ -28,8 +28,8 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --dir_temp 0.5 \
   --alpha_offset 1.0 \
   --dirichlet_weight \
-  --dir_weight_beta 0.5 \
-  --rtpt_tau 0.01
+  --dir_weight_beta 0.1 \
+  --rtpt_tau 0.1
 
 
 # adv

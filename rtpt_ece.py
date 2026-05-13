@@ -35,12 +35,51 @@ model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
 
+# def get_top_sim(sim_matrix):
+#     k = 20 # use 20 neighbor
+#     sim_matrix[sim_matrix>=1.0] = float('-inf')
+#     top_k_values, _ = sim_matrix.topk(k, dim=-1)
+#     top_k_mean = top_k_values.mean(dim=-1)
+#     return top_k_mean
 def get_top_sim(sim_matrix):
-    k = 20 # use 20 neighbor
-    sim_matrix[sim_matrix>=1.0] = float('-inf')
+    k = 20
+
+    if sim_matrix.dim() == 3:
+        sim_matrix = sim_matrix.squeeze(0)
+
+    sim_matrix = sim_matrix.clone()
+
+    n = sim_matrix.size(0)
+    k = min(k, max(n - 1, 1))
+
+    eye = torch.eye(n, device=sim_matrix.device, dtype=torch.bool)
+    sim_matrix[eye] = float('-inf')
+
     top_k_values, _ = sim_matrix.topk(k, dim=-1)
     top_k_mean = top_k_values.mean(dim=-1)
-    return top_k_mean
+
+    return top_k_mean  # [N]
+
+
+def detect_anomaly_views_by_similarity(score, anomaly_ratio=0.1):
+    """
+    Detect unreliable augmented views using R-TPT similarity score.
+
+    score: [N], higher means more reliable.
+    """
+    score = score.view(-1)
+
+    n = score.numel()
+    num_anomaly = max(1, int(n * anomaly_ratio))
+    num_anomaly = min(num_anomaly, n - 1)
+
+    anomaly_idx = torch.argsort(score, descending=False)[:num_anomaly]
+
+    anomaly_mask = torch.zeros(n, device=score.device, dtype=torch.bool)
+    anomaly_mask[anomaly_idx] = True
+
+    reliable_mask = ~anomaly_mask
+    return reliable_mask, anomaly_mask
 
 def normalize_score(x):
     return (x - x.mean()) / (x.std() + 1e-6)
@@ -209,72 +248,32 @@ def compute_ece(confidences, corrects, n_bins=15):
 #         loss.backward()
 #         optimizer.step()
 #     return
-def test_time_tuning(model, inputs, optimizer, scaler, args, anchor_logits=None):
+def test_time_tuning(model, inputs, optimizer, scaler, args, reliable_mask=None):
+    """
+    SC-R-TPT version:
+    - Keep original R-TPT entropy objective.
+    - If reliable_mask is provided, select confident samples only from reliable views.
+    - No Dirichlet.
+    """
     selected_idx = None
 
     for j in range(args.tta_steps):
-        output_full = model(inputs)
+        output_full = model(inputs)  # [N, C]
+
+        if reliable_mask is not None:
+            output_for_select = output_full[reliable_mask]
+        else:
+            output_for_select = output_full
 
         if selected_idx is not None:
-            output = output_full[selected_idx]
+            output = output_for_select[selected_idx]
         else:
             output, selected_idx = select_confident_samples(
-                output_full,
+                output_for_select,
                 args.selection_p
             )
 
-        # Original R-TPT entropy objective
-        loss_ent = entropy_avg(output)
-        loss = args.lambda_tpt * loss_ent
-
-        loss_dir = None
-        loss_evi = None
-
-        # Dirichlet consistency across selected augmented views
-        if args.dirichlet_consistency:
-            if args.dirichlet_reliable_anchor and anchor_logits is not None:
-                loss_dir, alpha = dirichlet_reliable_anchor_loss(
-                    output_full.float(),
-                    anchor_logits.float(),
-                    dir_temp=args.dir_temp,
-                    alpha_offset=args.alpha_offset
-                )
-            else:
-                loss_dir, alpha = dirichlet_center_consistency_loss(
-                    output_full.float(),
-                    dir_temp=args.dir_temp,
-                    alpha_offset=args.alpha_offset
-                )
-
-            loss = loss + args.lambda_dir * loss_dir
-
-            if args.evidence_penalty:
-                loss_evi = evidence_penalty(
-                    alpha,
-                    mode=args.evidence_mode
-                )
-                loss = loss + args.lambda_evi * loss_evi
-
-        if args.debug_dirichlet:
-            print(
-                f"[TTA step {j}] "
-                f"loss={loss.item():.6f}, "
-                f"ent={loss_ent.item():.6f}"
-            )
-
-            if loss_dir is not None:
-                print(
-                    f"[TTA step {j}] "
-                    f"dir={loss_dir.item():.6f}, "
-                    f"alpha_min={alpha.min().item():.6f}, "
-                    f"alpha_max={alpha.max().item():.6f}"
-                )
-
-            if loss_evi is not None:
-                print(
-                    f"[TTA step {j}] "
-                    f"evi={loss_evi.item():.6f}"
-                )
+        loss = entropy_avg(output)
 
         optimizer.zero_grad()
         loss.backward()
@@ -420,6 +419,7 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
     top1 = AverageMeter('Acc@1', ':6.2f', Summary.AVERAGE)
     tpt1 = AverageMeter('TTAAcc@1', ':6.2f', Summary.AVERAGE)
     top5 = AverageMeter('Acc@5', ':6.2f', Summary.AVERAGE)
+
     clip_conf_list = []
     clip_correct_list = []
     tta_conf_list = []
@@ -428,124 +428,136 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
     progress = ProgressMeter(
         len(val_loader),
         [batch_time, top1, tpt1],
-        prefix='Test: ')
+        prefix='Test: '
+    )
 
-    # reset model and switch to evaluate mode
     model.eval()
 
     if args.eps > 0.0:
         assert args.steps > 0
-        atk = torchattacks.PGD(model, eps=args.eps/255, alpha=args.alpha/255, steps=args.steps)
-        
+        atk = torchattacks.PGD(
+            model,
+            eps=args.eps / 255,
+            alpha=args.alpha / 255,
+            steps=args.steps
+        )
+
     end = time.time()
+
     for i, (images, target) in enumerate(val_loader):
         assert args.gpu is not None
         target = target.cuda(args.gpu, non_blocking=True)
 
+        # ============================================================
+        # Robust branch: generate adversarial image, then rebuild views
+        # ============================================================
         if args.eps > 0.0:
             image = images[0].cuda(args.gpu, non_blocking=True)
-            adv_image = atk(image, target)        
-            img_adv = transforms.ToPILImage()(adv_image.squeeze(0))
+            adv_image = atk(image, target)
+
+            img_adv = transforms.ToPILImage()(adv_image.squeeze(0).detach().cpu())
             images = data_transform(img_adv)
             images = [_.unsqueeze(0) for _ in images]
 
+        # ============================================================
+        # Move views to GPU
+        # ============================================================
         if isinstance(images, list):
             for k in range(len(images)):
                 images[k] = images[k].cuda(args.gpu, non_blocking=True)
             image = images[0]
         else:
             if len(images.size()) > 4:
-                # when using ImageNet Sampler as the dataset
                 assert images.size()[0] == 1
                 images = images.squeeze(0)
             images = images.cuda(args.gpu, non_blocking=True)
             image = images
-        
-        images = torch.cat(images, dim=0)
 
-        # reset model
+        images = torch.cat(images, dim=0)  # [N, C, H, W]
+
+        # ============================================================
+        # Reset prompt for each test sample
+        # ============================================================
         with torch.no_grad():
             model.reset()
+
         optimizer.load_state_dict(optim_state)
 
-        # with torch.no_grad():
-        #     clip_output = model(image)
-        #     clip_features, _, _ = model.forward_features(images)
-        #     clip_outputs = model(images)
-
-        # assert args.tta_steps > 0
-        # test_time_tuning(model, images, optimizer, scaler, args)
+        # ============================================================
+        # Pre-TTA CLIP output and image features
+        # ============================================================
         with torch.no_grad():
-            clip_output = model(image)
-            clip_features, _, _ = model.forward_features(images)
-            clip_outputs = model(images)
+            clip_output = model(image)                  # [1, num_classes]
+            clip_features, _, _ = model.forward_features(images)  # [N, D]
 
+        # ============================================================
+        # Build R-TPT similarity score
+        # ============================================================
         sim_matrix_images = torch.bmm(
             clip_features.unsqueeze(0),
             clip_features.unsqueeze(0).permute(0, 2, 1)
         )
-        score = get_top_sim(sim_matrix_images)
 
-        anchor_logits = None
-        if args.dirichlet_reliable_anchor:
-            score_1d = score.view(-1)  # make sure shape is [N]
-            k_anchor = min(args.dir_anchor_k, clip_outputs.size(0))
+        score = get_top_sim(sim_matrix_images).view(-1)  # [N]
 
-            reliable_idx = torch.argsort(score_1d, descending=True)[:k_anchor]
-            anchor_logits = clip_outputs[reliable_idx].detach()  # [K, C]
+        reliable_mask = None
+        anomaly_mask = None
+
+        if args.sc_view_filter:
+            reliable_mask, anomaly_mask = detect_anomaly_views_by_similarity(
+                score,
+                anomaly_ratio=args.sc_anomaly_ratio
+            )
+
+        # ============================================================
+        # Test-time prompt tuning
+        # Only reliable views are used for entropy selection if enabled
+        # ============================================================
         assert args.tta_steps > 0
+
         test_time_tuning(
             model,
             images,
             optimizer,
             scaler,
             args,
-            anchor_logits=anchor_logits
-)
-        with torch.no_grad():
-            tuned_outputs = model(images)
-        
-        # sim_matrix_images = torch.bmm(clip_features.unsqueeze(0), clip_features.unsqueeze(0).permute(0, 2, 1))
-        # score = get_top_sim(sim_matrix_images)
-        # weight = torch.nn.functional.softmax(score/0.01, dim=-1)
-        # tta_output = torch.bmm(weight.unsqueeze(-1).transpose(1, 2), tuned_outputs.unsqueeze(0)).squeeze(1)
-        sim_matrix_images = torch.bmm(
-            clip_features.unsqueeze(0),
-            clip_features.unsqueeze(0).permute(0, 2, 1)
+            reliable_mask=reliable_mask
         )
 
-        score = get_top_sim(sim_matrix_images)
+        # ============================================================
+        # Tuned outputs for all views
+        # ============================================================
+        with torch.no_grad():
+            tuned_outputs = model(images)  # [N, num_classes]
 
-        # if args.dirichlet_weight:
-        #     alpha = logits_to_dirichlet_alpha(
-        #         tuned_outputs.float(),
-        #         dir_temp=args.dir_temp,
-        #         alpha_offset=args.alpha_offset
-        #     )
-        #     alpha0 = alpha.sum(dim=-1)
-        #     evidence_score = torch.log(alpha0 + 1e-6)
+        # ============================================================
+        # Final R-TPT ensemble
+        # Optional: suppress anomaly views in final ensemble
+        # ============================================================
+        final_score = score.clone()
 
-        #     score = normalize_score(score) + args.dir_weight_beta * normalize_score(evidence_score)
-        if args.dirichlet_weight:
-            alpha = logits_to_dirichlet_alpha(
-                tuned_outputs.float(),
-                dir_temp=args.dir_temp,
-                alpha_offset=args.alpha_offset
-            )
-            alpha0 = alpha.sum(dim=-1)
-            evidence_score = torch.log(alpha0 + 1e-6)
+        if args.sc_view_filter:
+            # Reuse anomaly_mask from pre-TTA similarity.
+            # Lower score means lower final ensemble weight.
+            final_score[anomaly_mask] = final_score[anomaly_mask] - args.sc_anomaly_penalty
 
-            # Keep original R-TPT score scale; add only a small evidence correction.
-            score = score + args.dir_weight_beta * 0.01 * normalize_score(evidence_score)
-        weight = torch.nn.functional.softmax(score / args.rtpt_tau, dim=-1)
-        tta_output = torch.bmm(
-            weight.unsqueeze(-1).transpose(1, 2),
-            tuned_outputs.unsqueeze(0)
-        ).squeeze(1)
-        # measure accuracy and record loss
+        weight = torch.nn.functional.softmax(final_score / args.rtpt_tau, dim=-1)  # [N]
+
+        tta_output = torch.sum(
+            weight.unsqueeze(-1) * tuned_outputs,
+            dim=0,
+            keepdim=True
+        )  # [1, num_classes]
+
+        # ============================================================
+        # Accuracy
+        # ============================================================
         acc1, acc5 = accuracy(clip_output, target, topk=(1, 5))
         tpt_acc1, _ = accuracy(tta_output, target, topk=(1, 5))
 
+        # ============================================================
+        # ECE records
+        # ============================================================
         with torch.no_grad():
             clip_prob = torch.softmax(clip_output, dim=1)
             clip_conf, clip_pred = clip_prob.max(dim=1)
@@ -560,26 +572,37 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
 
             tta_conf_list.append(tta_conf.detach().cpu())
             tta_correct_list.append(tta_correct.detach().cpu())
-       
-        top1.update(acc1[0], images.size(0))
-        tpt1.update(tpt_acc1[0], images.size(0))
 
-        # measure elapsed time
+        top1.update(acc1[0], image.size(0))
+        top5.update(acc5[0], image.size(0))
+        tpt1.update(tpt_acc1[0], image.size(0))
+
+        # ============================================================
+        # Logging
+        # ============================================================
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if (i+1) % args.print_freq == 0 or (i+1) == len(val_loader):
+        if (i + 1) % args.print_freq == 0 or (i + 1) == len(val_loader):
             if args.eps <= 0:
-                print_log = 'iter:{}/{}, clip_acc1={}, tta_acc1={}'.format(i, len(val_loader), top1.avg, tpt1.avg)
+                print_log = 'iter:{}/{}, clip_acc1={}, tta_acc1={}'.format(
+                    i, len(val_loader), top1.avg, tpt1.avg
+                )
             else:
-                print_log = 'iter:{}/{}, clip_adv1={}, tta_adv1={}'.format(i, len(val_loader), top1.avg, tpt1.avg)
+                print_log = 'iter:{}/{}, clip_adv1={}, tta_adv1={}'.format(
+                    i, len(val_loader), top1.avg, tpt1.avg
+                )
+
             args.out_file.write(print_log + '\n')
             args.out_file.flush()
-            print(print_log+'\n')
+            print(print_log + '\n')
             progress.display(i)
 
     progress.display_summary()
 
+    # ============================================================
+    # Final ECE
+    # ============================================================
     clip_conf_all = torch.cat(clip_conf_list)
     clip_correct_all = torch.cat(clip_correct_list)
 
@@ -589,17 +612,24 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
     clip_ece = compute_ece(clip_conf_all, clip_correct_all, n_bins=15)
     tta_ece = compute_ece(tta_conf_all, tta_correct_all, n_bins=15)
 
+    method_name = "Rtpt"
+    if args.sc_view_filter:
+        method_name += "+SCView"
+
     if args.eps <= 0:
-        print_log = "Clip Clean ECE: {:.4f} / Rtpt Clean ECE: {:.4f}".format(clip_ece, tta_ece)
+        print_log = "Clip Clean ECE: {:.4f} / {} Clean ECE: {:.4f}".format(
+            clip_ece, method_name, tta_ece
+        )
     else:
-        print_log = "Clip Robust ECE: {:.4f} / Rtpt Robust ECE: {:.4f}".format(clip_ece, tta_ece)
+        print_log = "Clip Robust ECE: {:.4f} / {} Robust ECE: {:.4f}".format(
+            clip_ece, method_name, tta_ece
+        )
 
     args.out_file.write(print_log + '\n')
     args.out_file.flush()
     print(print_log + '\n')
 
     return [top1.avg, tpt1.avg, clip_ece, tta_ece]
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Test-time Prompt Tuning')
     parser.add_argument('data', metavar='DIR', help='path to dataset root')
@@ -667,4 +697,13 @@ if __name__ == '__main__':
 
     parser.add_argument('--dir_anchor_k', type=int, default=5,
                     help='number of reliable views used to build Dirichlet anchor')
+    
+    parser.add_argument('--sc_view_filter', action='store_true', default=False,
+                    help='self-calibrated R-TPT: suppress anomalous augmented views')
+
+    parser.add_argument('--sc_anomaly_ratio', type=float, default=0.1,
+                        help='ratio of augmented views treated as anomalous')
+
+    parser.add_argument('--sc_anomaly_penalty', type=float, default=0.05,
+                        help='penalty subtracted from anomaly view similarity score')
     main()

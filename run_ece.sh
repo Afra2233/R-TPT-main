@@ -29,7 +29,7 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --alpha_offset 1.0 \
   --dirichlet_weight \
   --dir_weight_beta 0.5 \
-  --rtpt_tau 1.0
+  --rtpt_tau 0.01
 
 
 # adv
@@ -52,7 +52,7 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --alpha_offset 1.0 \
 #   --dirichlet_weight \
 #   --dir_weight_beta 0.5 \
-#   --rtpt_tau 1.0
+#   --rtpt_tau 0.01
 
 # fewshot_datasets = ['DTD', 'Flower102', 'Food101', 'Cars', 'SUN397', 
 #                     'Aircraft', 'Pets', 'Caltech101', 'UCF101', 'eurosat']

@@ -12,6 +12,7 @@
 module add anaconda3/2022.05
 source activate rtpt
 # clean:
+# 2. reliable-anchor, lambda_dir=5.0
 python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --test_sets DTD \
   -a RN50 \
@@ -20,12 +21,12 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --ctx_init a_photo_of_a \
   -p 50 \
   --eps 0.0 \
-  --output_dir output_results/rtpt_dir_anchor_clean_lam1 \
+  --output_dir output_results/rtpt_dir_anchor_clean_lam5 \
   --dirichlet_consistency \
   --dirichlet_reliable_anchor \
   --dir_anchor_k 5 \
   --lambda_tpt 1.0 \
-  --lambda_dir 1.0 \
+  --lambda_dir 5.0 \
   --dir_temp 0.5 \
   --alpha_offset 1.0
 

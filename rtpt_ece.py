@@ -488,10 +488,11 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
 
         anchor_logits = None
         if args.dirichlet_reliable_anchor:
+            score_1d = score.view(-1)  # make sure shape is [N]
             k_anchor = min(args.dir_anchor_k, clip_outputs.size(0))
-            reliable_idx = torch.argsort(score, descending=True)[:k_anchor]
-            anchor_logits = clip_outputs[reliable_idx].detach()
 
+            reliable_idx = torch.argsort(score_1d, descending=True)[:k_anchor]
+            anchor_logits = clip_outputs[reliable_idx].detach()  # [K, C]
         assert args.tta_steps > 0
         test_time_tuning(
             model,

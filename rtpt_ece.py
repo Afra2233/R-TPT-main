@@ -42,6 +42,9 @@ def get_top_sim(sim_matrix):
     top_k_mean = top_k_values.mean(dim=-1)
     return top_k_mean
 
+def normalize_score(x):
+    return (x - x.mean()) / (x.std() + 1e-6)
+
 def print_args(args):
     s = "==========================================\n"
     for arg, content in args.__dict__.items():
@@ -204,7 +207,7 @@ def test_time_tuning(model, inputs, optimizer, scaler, args):
         # Dirichlet consistency across selected augmented views
         if args.dirichlet_consistency:
             loss_dir, alpha = dirichlet_center_consistency_loss(
-                output.float(),
+                output_full.float(),
                 dir_temp=args.dir_temp,
                 alpha_offset=args.alpha_offset
             )
@@ -441,11 +444,33 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
         with torch.no_grad():
             tuned_outputs = model(images)
         
-        sim_matrix_images = torch.bmm(clip_features.unsqueeze(0), clip_features.unsqueeze(0).permute(0, 2, 1))
-        score = get_top_sim(sim_matrix_images)
-        weight = torch.nn.functional.softmax(score/0.01, dim=-1)
-        tta_output = torch.bmm(weight.unsqueeze(-1).transpose(1, 2), tuned_outputs.unsqueeze(0)).squeeze(1)
+        # sim_matrix_images = torch.bmm(clip_features.unsqueeze(0), clip_features.unsqueeze(0).permute(0, 2, 1))
+        # score = get_top_sim(sim_matrix_images)
+        # weight = torch.nn.functional.softmax(score/0.01, dim=-1)
+        # tta_output = torch.bmm(weight.unsqueeze(-1).transpose(1, 2), tuned_outputs.unsqueeze(0)).squeeze(1)
+        sim_matrix_images = torch.bmm(
+            clip_features.unsqueeze(0),
+            clip_features.unsqueeze(0).permute(0, 2, 1)
+        )
 
+        score = get_top_sim(sim_matrix_images)
+
+        if args.dirichlet_weight:
+            alpha = logits_to_dirichlet_alpha(
+                tuned_outputs.float(),
+                dir_temp=args.dir_temp,
+                alpha_offset=args.alpha_offset
+            )
+            alpha0 = alpha.sum(dim=-1)
+            evidence_score = torch.log(alpha0 + 1e-6)
+
+            score = normalize_score(score) + args.dir_weight_beta * normalize_score(evidence_score)
+
+        weight = torch.nn.functional.softmax(score / args.rtpt_tau, dim=-1)
+        tta_output = torch.bmm(
+            weight.unsqueeze(-1).transpose(1, 2),
+            tuned_outputs.unsqueeze(0)
+        ).squeeze(1)
         # measure accuracy and record loss
         acc1, acc5 = accuracy(clip_output, target, topk=(1, 5))
         tpt_acc1, _ = accuracy(tta_output, target, topk=(1, 5))
@@ -557,4 +582,13 @@ if __name__ == '__main__':
 
     parser.add_argument('--debug_dirichlet', action='store_true', default=False,
                         help='print debug information for Dirichlet branch')
+    
+    parser.add_argument('--dirichlet_weight', action='store_true', default=False,
+                    help='use Dirichlet evidence to reweight R-TPT ensemble')
+
+    parser.add_argument('--dir_weight_beta', type=float, default=0.5,
+                        help='weight of Dirichlet evidence score in R-TPT ensemble')
+
+    parser.add_argument('--rtpt_tau', type=float, default=0.01,
+                        help='temperature for R-TPT ensemble weights')
     main()

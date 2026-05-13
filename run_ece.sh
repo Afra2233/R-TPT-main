@@ -20,12 +20,12 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --ctx_init a_photo_of_a \
   -p 50 \
   --eps 0.0 \
-  --output_dir output_results/rtpt_dir_anchor_clean \
+  --output_dir output_results/rtpt_dir_anchor_clean_lam1 \
   --dirichlet_consistency \
   --dirichlet_reliable_anchor \
   --dir_anchor_k 5 \
   --lambda_tpt 1.0 \
-  --lambda_dir 0.1 \
+  --lambda_dir 1.0 \
   --dir_temp 0.5 \
   --alpha_offset 1.0
 

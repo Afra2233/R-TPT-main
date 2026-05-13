@@ -11,8 +11,45 @@
 
 module add anaconda3/2022.05
 source activate rtpt
+# clean:
 # python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset --test_sets eurosat  -a RN50 -b 64 --gpu 0 --ctx_init a_photo_of_a -p 50 --eps 0.0 --output_dir 'output_results/rtpt'
-python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset --test_sets eurosat  -a RN50 -b 64 --gpu 0 --ctx_init a_photo_of_a -p 50 --eps 1.0 --step 7 --output_dir 'output_results/rtpt'
+python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+  --test_sets eurosat \
+  -a RN50 \
+  -b 64 \
+  --gpu 0 \
+  --ctx_init a_photo_of_a \
+  -p 50 \
+  --eps 0.0 \
+  --output_dir output_results/rtpt_dirichlet_clean \
+  --dirichlet_consistency \
+  --lambda_tpt 1.0 \
+  --lambda_dir 1.0 \
+  --dir_temp 1.0 \
+  --alpha_offset 1.0
+
+
+
+# adv
+# python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset --test_sets eurosat  -a RN50 -b 64 --gpu 0 --ctx_init a_photo_of_a -p 50 --eps 1.0 --step 7 --output_dir 'output_results/rtpt'
+
+# python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+#   --test_sets eurosat \
+#   -a RN50 \
+#   -b 64 \
+#   --gpu 0 \
+#   --ctx_init a_photo_of_a \
+#   -p 50 \
+#   --eps 1.0 \
+#   --steps 7 \
+#   --output_dir output_results/rtpt_dirichlet \
+#   --dirichlet_consistency \
+#   --lambda_tpt 1.0 \
+#   --lambda_dir 1.0 \
+#   --dir_temp 1.0 \
+#   --alpha_offset 1.0
 
 # fewshot_datasets = ['DTD', 'Flower102', 'Food101', 'Cars', 'SUN397', 
 #                     'Aircraft', 'Pets', 'Caltech101', 'UCF101', 'eurosat']
+
+

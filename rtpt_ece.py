@@ -18,6 +18,7 @@ try:
 except ImportError:
     BICUBIC = Image.BICUBIC
 import torchvision.models as models
+import torch.nn.functional as F
 
 from clip.custom_clip import get_coop
 from data.imagnet_prompts import imagenet_classes
@@ -55,6 +56,86 @@ def select_confident_samples(logits, top):
 def entropy_avg(outputs):
     batch_entropy = -(outputs.softmax(1) * outputs.log_softmax(1)).sum(1)
     return batch_entropy.mean()
+
+def logits_to_dirichlet_alpha(logits, dir_temp=1.0, alpha_offset=1.0):
+    """
+    Map logits to Dirichlet concentration parameters.
+    alpha = softplus(logits / dir_temp) + alpha_offset
+    """
+    logits = logits.float()
+    scaled_logits = torch.clamp(logits / dir_temp, min=-20.0, max=20.0)
+    alpha = F.softplus(scaled_logits) + alpha_offset
+    alpha = alpha.clamp_min(1e-6)
+    return alpha
+
+
+def dirichlet_kl(alpha_p, alpha_q, reduction='batchmean'):
+    """
+    KL( Dir(alpha_p) || Dir(alpha_q) )
+    alpha_p, alpha_q: [N, C]
+    """
+    alpha_p = alpha_p.float().clamp_min(1e-6)
+    alpha_q = alpha_q.float().clamp_min(1e-6)
+
+    sum_p = alpha_p.sum(dim=-1, keepdim=True).clamp_min(1e-6)
+    sum_q = alpha_q.sum(dim=-1, keepdim=True).clamp_min(1e-6)
+
+    term1 = torch.lgamma(sum_p) - torch.lgamma(alpha_p).sum(dim=-1, keepdim=True)
+    term2 = torch.lgamma(sum_q) - torch.lgamma(alpha_q).sum(dim=-1, keepdim=True)
+    term3 = ((alpha_p - alpha_q) * (
+        torch.digamma(alpha_p) - torch.digamma(sum_p)
+    )).sum(dim=-1, keepdim=True)
+
+    kl = term1 - term2 + term3
+    kl = kl.squeeze(-1)
+    kl = torch.nan_to_num(kl, nan=0.0, posinf=1e4, neginf=0.0)
+
+    if reduction in ['mean', 'batchmean']:
+        return kl.mean()
+    elif reduction == 'sum':
+        return kl.sum()
+    elif reduction == 'none':
+        return kl
+    else:
+        raise ValueError(f"Unknown reduction: {reduction}")
+
+
+def dirichlet_center_consistency_loss(logits, dir_temp=1.0, alpha_offset=1.0):
+    """
+    Dirichlet consistency across selected augmented views.
+    logits: [N, C]
+    """
+    alpha = logits_to_dirichlet_alpha(
+        logits,
+        dir_temp=dir_temp,
+        alpha_offset=alpha_offset
+    )
+
+    center_alpha = alpha.mean(dim=0, keepdim=True)
+    center_alpha = center_alpha.expand_as(alpha).contiguous()
+
+    loss_dir = dirichlet_kl(alpha, center_alpha, reduction='batchmean')
+    loss_dir = torch.nan_to_num(loss_dir, nan=0.0, posinf=1e4, neginf=0.0)
+
+    return loss_dir, alpha
+
+
+def evidence_penalty(alpha, mode='mean_total'):
+    """
+    Penalize excessive total evidence.
+    """
+    alpha = alpha.float().clamp_min(1e-6)
+    alpha0 = alpha.sum(dim=-1)
+
+    if mode == 'mean_total':
+        out = alpha0.mean()
+    elif mode == 'log_total':
+        out = torch.log(alpha0 + 1e-6).mean()
+    else:
+        raise ValueError(f"Unknown evidence penalty mode: {mode}")
+
+    return torch.nan_to_num(out, nan=0.0, posinf=1e4, neginf=0.0)
+
 def compute_ece(confidences, corrects, n_bins=15):
     """
     confidences: Tensor, shape [N], max softmax probability
@@ -81,25 +162,88 @@ def compute_ece(confidences, corrects, n_bins=15):
             ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
 
     return ece.item() * 100.0
-def test_time_tuning(model, inputs, optimizer, scaler, args):
+# def test_time_tuning(model, inputs, optimizer, scaler, args):
     
+#     selected_idx = None
+#     for j in range(args.tta_steps):
+#         if True:
+#             output = model(inputs) 
+
+#             if selected_idx is not None:
+#                 output = output[selected_idx]
+#             else:
+#                 output, selected_idx = select_confident_samples(output, args.selection_p)
+
+#             loss = entropy_avg(output)
+
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+#     return
+def test_time_tuning(model, inputs, optimizer, scaler, args):
     selected_idx = None
+
     for j in range(args.tta_steps):
-        if True:
-            output = model(inputs) 
+        output_full = model(inputs)
 
-            if selected_idx is not None:
-                output = output[selected_idx]
-            else:
-                output, selected_idx = select_confident_samples(output, args.selection_p)
+        if selected_idx is not None:
+            output = output_full[selected_idx]
+        else:
+            output, selected_idx = select_confident_samples(
+                output_full,
+                args.selection_p
+            )
 
-            loss = entropy_avg(output)
+        # Original R-TPT entropy objective
+        loss_ent = entropy_avg(output)
+        loss = args.lambda_tpt * loss_ent
+
+        loss_dir = None
+        loss_evi = None
+
+        # Dirichlet consistency across selected augmented views
+        if args.dirichlet_consistency:
+            loss_dir, alpha = dirichlet_center_consistency_loss(
+                output.float(),
+                dir_temp=args.dir_temp,
+                alpha_offset=args.alpha_offset
+            )
+
+            loss = loss + args.lambda_dir * loss_dir
+
+            if args.evidence_penalty:
+                loss_evi = evidence_penalty(
+                    alpha,
+                    mode=args.evidence_mode
+                )
+                loss = loss + args.lambda_evi * loss_evi
+
+        if args.debug_dirichlet:
+            print(
+                f"[TTA step {j}] "
+                f"loss={loss.item():.6f}, "
+                f"ent={loss_ent.item():.6f}"
+            )
+
+            if loss_dir is not None:
+                print(
+                    f"[TTA step {j}] "
+                    f"dir={loss_dir.item():.6f}, "
+                    f"alpha_min={alpha.min().item():.6f}, "
+                    f"alpha_max={alpha.max().item():.6f}"
+                )
+
+            if loss_evi is not None:
+                print(
+                    f"[TTA step {j}] "
+                    f"evi={loss_evi.item():.6f}"
+                )
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    return
 
+    return
 
 def main():
     args = parser.parse_args()
@@ -386,5 +530,31 @@ if __name__ == '__main__':
     parser.add_argument('--tta_steps', default=1, type=int, help='test-time-adapt steps')
 
     parser.add_argument('--load_tecoa', type=str, default='', choices=['', 'RN50-eps1', 'ViT-B/32-eps1', 'ViT-B/32-eps4'])
+    parser.add_argument('--dirichlet_consistency', action='store_true', default=False,
+                    help='use Dirichlet consistency across selected augmented views')
 
+    parser.add_argument('--dir_temp', type=float, default=1.0,
+                        help='temperature for mapping logits to Dirichlet alpha')
+
+    parser.add_argument('--alpha_offset', type=float, default=1.0,
+                        help='offset added to Dirichlet alpha')
+
+    parser.add_argument('--lambda_dir', type=float, default=0.1,
+                        help='weight for Dirichlet consistency loss')
+
+    parser.add_argument('--lambda_tpt', type=float, default=1.0,
+                        help='weight for original R-TPT entropy loss')
+
+    parser.add_argument('--evidence_penalty', action='store_true', default=False,
+                        help='penalize excessive total evidence')
+
+    parser.add_argument('--lambda_evi', type=float, default=1e-4,
+                        help='weight for evidence penalty')
+
+    parser.add_argument('--evidence_mode', type=str, default='log_total',
+                        choices=['mean_total', 'log_total'],
+                        help='type of evidence penalty')
+
+    parser.add_argument('--debug_dirichlet', action='store_true', default=False,
+                        help='print debug information for Dirichlet branch')
     main()

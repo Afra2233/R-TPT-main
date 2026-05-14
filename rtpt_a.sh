@@ -29,6 +29,8 @@ source activate rtpt
 #   --dir_gate_tau 0.1 \
 #   --lambda_cons 1.0
 
+
+# adv:
 python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --test_sets DTD \
   -a RN50 \
@@ -46,3 +48,6 @@ python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --alpha_offset 1.0 \
   --dir_gate_tau 0.1 \
   --lambda_cons 1.0
+
+
+  

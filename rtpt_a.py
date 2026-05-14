@@ -12,12 +12,14 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 
+
 try:
     from torchvision.transforms import InterpolationMode
     BICUBIC = InterpolationMode.BICUBIC
 except ImportError:
     BICUBIC = Image.BICUBIC
 import torchvision.models as models
+import torch.nn.functional as F
 
 from clip.custom_clip import get_coop
 from data.imagnet_prompts import imagenet_classes
@@ -67,6 +69,77 @@ def select_confident_samples(logits, top):
 def entropy_avg(outputs):
     batch_entropy = -(outputs.softmax(1) * outputs.log_softmax(1)).sum(1)
     return batch_entropy.mean()
+def logits_to_dirichlet_alpha(logits, dir_temp=1.0, alpha_offset=1.0):
+    """
+    Map logits to Dirichlet concentration parameters.
+    alpha = softplus(logits / dir_temp) + alpha_offset
+    """
+    logits = logits.float()
+    scaled_logits = torch.clamp(logits / dir_temp, min=-20.0, max=20.0)
+
+    alpha = F.softplus(scaled_logits) + alpha_offset
+    alpha = alpha.clamp_min(1e-6)
+    return alpha
+
+
+def dirichlet_conservative_entropy(
+    outputs,
+    dir_temp=1.0,
+    alpha_offset=1.0,
+    gate_tau=0.1,
+    lambda_cons=1.0
+):
+    """
+    Dirichlet conservative entropy for R-TPT.
+
+    outputs: [K, C], selected augmented-view logits.
+
+    If selected views agree:
+        minimize entropy as original R-TPT.
+    If selected views disagree:
+        reduce entropy minimization and enforce consistency to anchor.
+    """
+    alpha = logits_to_dirichlet_alpha(
+        outputs,
+        dir_temp=dir_temp,
+        alpha_offset=alpha_offset
+    )  # [K, C]
+
+    # Dirichlet mean prediction
+    alpha0 = alpha.sum(dim=1, keepdim=True).clamp_min(1e-6)
+    probs = (alpha / alpha0).clamp_min(1e-8)  # [K, C]
+    log_probs = torch.log(probs)
+
+    # Pointwise entropy on Dirichlet mean
+    ent_each = -(probs * log_probs).sum(dim=1)  # [K]
+    ent_loss = ent_each.mean()
+
+    # Anchor = average Dirichlet mean prediction, detached
+    with torch.no_grad():
+        anchor = probs.mean(dim=0, keepdim=True)
+        anchor = anchor / anchor.sum(dim=1, keepdim=True).clamp_min(1e-8)
+        anchor = anchor.clamp_min(1e-8)
+
+    # View disagreement: KL(p_i || p_anchor)
+    kl_each = F.kl_div(
+        log_probs,
+        anchor.expand_as(probs),
+        reduction='none'
+    ).sum(dim=1)  # [K]
+
+    disagreement = kl_each.mean()
+
+    # Gate:
+    # high disagreement -> small gate -> less entropy minimization
+    # low disagreement  -> large gate -> normal entropy minimization
+    gate = torch.exp(-disagreement.detach() / gate_tau)
+    gate = torch.clamp(gate, min=0.0, max=1.0)
+
+    consistency_loss = kl_each.mean()
+
+    loss = gate * ent_loss + lambda_cons * (1.0 - gate) * consistency_loss
+
+    return loss, ent_loss.detach(), consistency_loss.detach(), gate.detach(), disagreement.detach()
 
 def reliability_weighted_entropy(outputs, reliability):
     """
@@ -291,14 +364,54 @@ def test_time_tuning(model, inputs, optimizer, scaler, args, reliability=None):
                 output_full,
                 args.selection_p
             )
+def test_time_tuning(model, inputs, optimizer, scaler, args, reliability=None):
+    """
+    Original R-TPT:
+        select confident views, then minimize mean entropy.
 
-            if reliability is not None:
-                rel_selected = reliability[selected_idx]
-            else:
-                rel_selected = None
+    Dirichlet-conservative R-TPT:
+        keep R-TPT confident-view selection,
+        but replace aggressive entropy minimization with
+        Dirichlet consensus-gated conservative entropy.
+    """
+    selected_idx = None
 
-        if args.rel_weighted_entropy and rel_selected is not None:
+    for j in range(args.tta_steps):
+        output_full = model(inputs)  # [N, C]
+
+        if selected_idx is not None:
+            output = output_full[selected_idx]
+        else:
+            output, selected_idx = select_confident_samples(
+                output_full,
+                args.selection_p
+            )
+
+        if args.dir_conservative_entropy:
+            loss, loss_ent, loss_cons, gate, disagreement = dirichlet_conservative_entropy(
+                output,
+                dir_temp=args.dir_temp,
+                alpha_offset=args.alpha_offset,
+                gate_tau=args.dir_gate_tau,
+                lambda_cons=args.lambda_cons
+            )
+
+            if args.debug_dir_conservative:
+                print(
+                    "[DirCons] "
+                    "loss={:.6f}, ent={:.6f}, cons={:.6f}, gate={:.6f}, disagree={:.6f}".format(
+                        loss.item(),
+                        loss_ent.item(),
+                        loss_cons.item(),
+                        gate.item(),
+                        disagreement.item()
+                    )
+                )
+
+        elif args.rel_weighted_entropy and reliability is not None:
+            rel_selected = reliability[selected_idx]
             loss = reliability_weighted_entropy(output, rel_selected)
+
         else:
             loss = entropy_avg(output)
 
@@ -724,4 +837,22 @@ if __name__ == '__main__':
                         help='threshold for high-confidence wrong predictions')
     parser.add_argument('--rel_weighted_entropy', action='store_true', default=False,
                     help='use R-TPT reliability-weighted conservative entropy loss')
+    
+    parser.add_argument('--dir_conservative_entropy', action='store_true', default=False,
+                    help='use Dirichlet consensus-gated conservative entropy loss')
+
+    parser.add_argument('--dir_temp', type=float, default=1.0,
+                        help='temperature for mapping logits to Dirichlet alpha')
+
+    parser.add_argument('--alpha_offset', type=float, default=1.0,
+                        help='offset added to Dirichlet alpha')
+
+    parser.add_argument('--dir_gate_tau', type=float, default=0.1,
+                        help='temperature for Dirichlet disagreement gate')
+
+    parser.add_argument('--lambda_cons', type=float, default=1.0,
+                        help='weight for conservative consistency loss')
+
+    parser.add_argument('--debug_dir_conservative', action='store_true', default=False,
+                        help='print Dirichlet conservative entropy debug info')
     main()

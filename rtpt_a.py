@@ -35,11 +35,23 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 def get_top_sim(sim_matrix):
-    k = 20 # use 20 neighbor
-    sim_matrix[sim_matrix>=1.0] = float('-inf')
+    k = 20
+
+    if sim_matrix.dim() == 3:
+        sim_matrix = sim_matrix.squeeze(0)
+
+    sim_matrix = sim_matrix.clone()
+
+    n = sim_matrix.size(0)
+    k = min(k, max(n - 1, 1))
+
+    eye = torch.eye(n, device=sim_matrix.device, dtype=torch.bool)
+    sim_matrix[eye] = float('-inf')
+
     top_k_values, _ = sim_matrix.topk(k, dim=-1)
     top_k_mean = top_k_values.mean(dim=-1)
-    return top_k_mean
+
+    return top_k_mean  # [N]
 
 def print_args(args):
     s = "==========================================\n"
@@ -55,6 +67,30 @@ def select_confident_samples(logits, top):
 def entropy_avg(outputs):
     batch_entropy = -(outputs.softmax(1) * outputs.log_softmax(1)).sum(1)
     return batch_entropy.mean()
+
+def reliability_weighted_entropy(outputs, reliability):
+    """
+    COME-style conservative entropy for R-TPT.
+
+    outputs: [K, C], selected view logits
+    reliability: [K], reliability scores of selected views
+    """
+    probs = outputs.softmax(dim=1)
+    log_probs = outputs.log_softmax(dim=1)
+    ent = -(probs * log_probs).sum(dim=1)  # [K]
+
+    w = reliability.view(-1).detach().float()
+
+    # normalize reliability into positive weights
+    w = w - w.min()
+    w = w / (w.max() + 1e-6)
+
+    # avoid zero-sum / all-zero weights
+    w = w + 1e-3
+    w = w / w.sum()
+
+    loss = (w * ent).sum()
+    return loss
 def compute_ece(confidences, corrects, n_bins=15):
     """
     confidences: Tensor [N], max softmax probability
@@ -229,23 +265,47 @@ def format_stats_for_log(stats, mode_name):
     )
 
     return "\n".join(lines)
-def test_time_tuning(model, inputs, optimizer, scaler, args):
-    
+def test_time_tuning(model, inputs, optimizer, scaler, args, reliability=None):
+    """
+    Original R-TPT:
+        select confident views, then minimize mean entropy.
+
+    Reliability-conservative R-TPT:
+        keep the same confident-view selection,
+        but weight selected views by R-TPT reliability score.
+    """
     selected_idx = None
+
     for j in range(args.tta_steps):
-        if True:
-            output = model(inputs) 
+        output_full = model(inputs)  # [N, C]
 
-            if selected_idx is not None:
-                output = output[selected_idx]
+        if selected_idx is not None:
+            output = output_full[selected_idx]
+
+            if reliability is not None:
+                rel_selected = reliability[selected_idx]
             else:
-                output, selected_idx = select_confident_samples(output, args.selection_p)
+                rel_selected = None
+        else:
+            output, selected_idx = select_confident_samples(
+                output_full,
+                args.selection_p
+            )
 
+            if reliability is not None:
+                rel_selected = reliability[selected_idx]
+            else:
+                rel_selected = None
+
+        if args.rel_weighted_entropy and rel_selected is not None:
+            loss = reliability_weighted_entropy(output, rel_selected)
+        else:
             loss = entropy_avg(output)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
     return
 
 
@@ -421,11 +481,8 @@ def main():
                 "all_stats": stats,
             }
 
-        args.out_file.write(print_log + '\n')
-        args.out_file.flush()
-        print(print_log + '\n')
+ 
 
-        torch.save(save_log, os.path.join(args.output_dir, 'results_log.pt'))      
         args.out_file.write(print_log + '\n')
         args.out_file.flush()
         print(print_log+'\n')
@@ -502,23 +559,37 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
             clip_output = model(image)
             clip_features, _, _ = model.forward_features(images)
 
-        assert args.tta_steps > 0
-        test_time_tuning(model, images, optimizer, scaler, args)
-
-        with torch.no_grad():
-            tuned_outputs = model(images)
-
         sim_matrix_images = torch.bmm(
             clip_features.unsqueeze(0),
             clip_features.unsqueeze(0).permute(0, 2, 1)
         )
 
-        score = get_top_sim(sim_matrix_images)
+        score = get_top_sim(sim_matrix_images).view(-1)  # [N]
+
+        assert args.tta_steps > 0
+        test_time_tuning(
+            model,
+            images,
+            optimizer,
+            scaler,
+            args,
+            reliability=score
+        )
+
+        with torch.no_grad():
+            tuned_outputs = model(images)
+
         weight = torch.nn.functional.softmax(score / 0.01, dim=-1)
-        tta_output = torch.bmm(
-            weight.unsqueeze(-1).transpose(1, 2),
-            tuned_outputs.unsqueeze(0)
-        ).squeeze(1)
+
+        tta_output = torch.sum(
+            weight.unsqueeze(-1) * tuned_outputs,
+            dim=0,
+            keepdim=True
+        )
+        # tta_output = torch.bmm(
+        #     weight.unsqueeze(-1).transpose(1, 2),
+        #     tuned_outputs.unsqueeze(0)
+        # ).squeeze(1)
 
         acc1, acc5 = accuracy(clip_output, target, topk=(1, 5))
         tpt_acc1, _ = accuracy(tta_output, target, topk=(1, 5))
@@ -651,4 +722,6 @@ if __name__ == '__main__':
 
     parser.add_argument('--high_conf_th', type=float, default=0.9,
                         help='threshold for high-confidence wrong predictions')
+    parser.add_argument('--rel_weighted_entropy', action='store_true', default=False,
+                    help='use R-TPT reliability-weighted conservative entropy loss')
     main()

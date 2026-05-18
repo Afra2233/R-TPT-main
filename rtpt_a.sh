@@ -13,7 +13,7 @@ module add anaconda3/2022.05
 source activate rtpt
 
 
-# clean
+# clean====
 
 python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --test_sets DTD \

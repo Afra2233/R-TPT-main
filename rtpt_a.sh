@@ -12,22 +12,83 @@
 module add anaconda3/2022.05
 source activate rtpt
 
-python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets UCF101 \
+
+# clean
+
+python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+  --test_sets DTD \
   -a RN50 \
   -b 64 \
   --gpu 0 \
   --ctx_init a_photo_of_a \
   -p 1000 \
-  --eps 0.0 \
-  --output_dir output_results/dir_cons_entropy_clean \
+  --eps 0.0 \ßßß
+  --tta_steps 0 \
+  --output_dir output_results/tta0_clean \
   --ece_bins 15 \
-  --high_conf_th 0.9 \
-  --dir_conservative_entropy \
-  --dir_temp 1.0 \
-  --alpha_offset 1.0 \
-  --dir_gate_tau 0.1 \
-  --lambda_cons 1.0
+  --high_conf_th 0.9
+
+# python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+#   --test_sets DTD \
+#   -a RN50 \
+#   -b 64 \
+#   --gpu 0 \
+#   --ctx_init a_photo_of_a \
+#   -p 1000 \
+#   --eps 0.0 \
+#   --tta_steps 1 \
+#   --output_dir output_results/tta1_clean \
+#   --ece_bins 15 \
+#   --high_conf_th 0.9
+
+# adv：
+
+# python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+#   --test_sets DTD \
+#   -a RN50 \
+#   -b 64 \
+#   --gpu 0 \
+#   --ctx_init a_photo_of_a \
+#   -p 1000 \
+#   --eps 1.0 \
+#   --steps 7 \
+#   --tta_steps 0 \
+#   --output_dir output_results/tta0_robust \
+#   --ece_bins 15 \
+#   --high_conf_th 0.9
+
+
+# python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+#   --test_sets DTD \
+#   -a RN50 \
+#   -b 64 \
+#   --gpu 0 \
+#   --ctx_init a_photo_of_a \
+#   -p 1000 \
+#   --eps 1.0 \
+#   --steps 7 \
+#   --tta_steps 1 \
+#   --output_dir output_results/tta1_robust \
+#   --ece_bins 15 \
+#   --high_conf_th 0.9
+
+# works====================================================================
+# python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+#   --test_sets UCF101 \
+#   -a RN50 \
+#   -b 64 \
+#   --gpu 0 \
+#   --ctx_init a_photo_of_a \
+#   -p 1000 \
+#   --eps 0.0 \
+#   --output_dir output_results/dir_cons_entropy_clean \
+#   --ece_bins 15 \
+#   --high_conf_th 0.9 \
+#   --dir_conservative_entropy \
+#   --dir_temp 1.0 \
+#   --alpha_offset 1.0 \
+#   --dir_gate_tau 0.1 \
+#   --lambda_cons 1.0
 
 
 
@@ -49,5 +110,5 @@ python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --dir_gate_tau 0.1 \
 #   --lambda_cons 1.0
 
-
+# works===================================================================
   

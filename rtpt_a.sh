@@ -15,7 +15,7 @@ source activate rtpt
 
 # clean
 
-python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --test_sets DTD \
   -a RN50 \
   -b 64 \
@@ -28,7 +28,7 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --ece_bins 15 \
   --high_conf_th 0.9
 
-# python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+# python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --test_sets DTD \
 #   -a RN50 \
 #   -b 64 \
@@ -43,7 +43,7 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 
 # adv：
 
-# python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+# python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --test_sets DTD \
 #   -a RN50 \
 #   -b 64 \
@@ -58,7 +58,7 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --high_conf_th 0.9
 
 
-# python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+# python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --test_sets DTD \
 #   -a RN50 \
 #   -b 64 \

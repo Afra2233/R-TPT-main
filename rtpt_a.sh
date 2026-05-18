@@ -22,7 +22,7 @@ python rtpt_ece.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --gpu 0 \
   --ctx_init a_photo_of_a \
   -p 1000 \
-  --eps 0.0 \ßßß
+  --eps 0.0 \
   --tta_steps 0 \
   --output_dir output_results/tta0_clean \
   --ece_bins 15 \

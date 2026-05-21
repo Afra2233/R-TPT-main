@@ -13,7 +13,7 @@ module add anaconda3/2022.05
 source activate rtpt
 
 python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets Caltech101 \
+  --test_sets UCF101 \
   -a RN50 \
   -b 64 \
   --gpu 0 \
@@ -25,7 +25,7 @@ python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --lambda_otpt 18
 
 # python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-#   --test_sets Caltech101 \
+#   --test_sets UCF101 \
 #   -a RN50 \
 #   -b 64 \
 #   --gpu 0 \

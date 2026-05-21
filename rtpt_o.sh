@@ -12,6 +12,18 @@
 module add anaconda3/2022.05
 source activate rtpt
 
+# python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+#   --test_sets DTD \
+#   -a RN50 \
+#   -b 64 \
+#   --gpu 0 \
+#   --ctx_init a_photo_of_a \
+#   -p 1000 \
+#   --eps 0.0 \
+#   --output_dir output_results/rtpt_otpt_clean \
+#   --otpt \
+#   --lambda_otpt 18
+
 python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --test_sets DTD \
   -a RN50 \
@@ -19,23 +31,8 @@ python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --gpu 0 \
   --ctx_init a_photo_of_a \
   -p 1000 \
-  --eps 0.0 \
-  --output_dir output_results/rtpt_otpt_clean \
+  --eps 1.0 \
+  --steps 7 \
+  --output_dir output_results/rtpt_otpt_robust \
   --otpt \
   --lambda_otpt 18
-
-
-#   python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-#   --test_sets DTD \
-#   -a RN50 \
-#   -b 64 \
-#   --gpu 0 \
-#   --ctx_init a_photo_of_a \
-#   -p 1000 \
-#   --eps 1.0 \
-#   --steps 7 \
-#   --output_dir output_results/rtpt_otpt_robust \
-#   --ece_bins 15 \
-#   --high_conf_th 0.9 \
-#   --otpt \
-#   --lambda_otpt 0.1

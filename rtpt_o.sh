@@ -13,7 +13,7 @@
 # source activate rtpt
 
 # python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-#   --test_sets UCF101 \
+#   --test_sets eurosat \
 #   -a RN50 \
 #   -b 64 \
 #   --gpu 0 \
@@ -25,7 +25,7 @@
 #   --lambda_otpt 18
 
 python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets UCF101 \
+  --test_sets eurosat \
   -a RN50 \
   -b 64 \
   --gpu 0 \

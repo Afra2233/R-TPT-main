@@ -34,7 +34,7 @@ source activate rtpt
 
 
 python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets eurosat \
+  --test_sets DTD \
   -a RN50 \
   -b 64 \
   --gpu 0 \

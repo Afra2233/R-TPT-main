@@ -679,24 +679,24 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
 
         score = get_top_sim(sim_matrix_images).view(-1)  # [N]
 # =============================================================
-        # assert args.tta_steps > 0
-        # test_time_tuning(
-        #     model,
-        #     images,
-        #     optimizer,
-        #     scaler,
-        #     args,
-        #     reliability=score
-        # )
-        if args.tta_steps > 0:
-            test_time_tuning(
-                model,
-                images,
-                optimizer,
-                scaler,
-                args,
-                reliability=score
-            )
+        assert args.tta_steps > 0
+        test_time_tuning(
+            model,
+            images,
+            optimizer,
+            scaler,
+            args,
+            reliability=score
+        )
+        # if args.tta_steps > 0:
+        #     test_time_tuning(
+        #         model,
+        #         images,
+        #         optimizer,
+        #         scaler,
+        #         args,
+        #         reliability=score
+        #     )
 # =============================================================
         with torch.no_grad():
             tuned_outputs = model(images)

@@ -21,10 +21,8 @@ python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   -p 1000 \
   --eps 0.0 \
   --output_dir output_results/rtpt_otpt_clean \
-  --ece_bins 15 \
-  --high_conf_th 0.9 \
   --otpt \
-  --lambda_otpt 0.1
+  --lambda_otpt 18
 
 
 #   python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \

@@ -22,13 +22,13 @@ source activate rtpt
 #   --ctx_init a_photo_of_a \
 #   -p 1000 \
 #   --eps 0.0 \
-#   --output_dir output_results/dir_cons_entropy_clean/dir_gate_tau_0.5_lambda_cons_0.1 \
+#   --output_dir output_results/dir_cons_entropy_clean/dir_gate_tau_1.0_lambda_cons_0.1 \
 #   --ece_bins 15 \
 #   --high_conf_th 0.9 \
 #   --dir_conservative_entropy \
 #   --dir_temp 1.0 \
 #   --alpha_offset 1.0 \
-#   --dir_gate_tau 0.5 \
+#   --dir_gate_tau 1.0 \
 #   --lambda_cons 0.1
 
 
@@ -42,13 +42,13 @@ python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   -p 1000 \
   --eps 1.0 \
   --steps 7 \
-  --output_dir output_results/dir_cons_entropy_robust/dir_gate_tau_0.5_lambda_cons_0.1\
+  --output_dir output_results/dir_cons_entropy_robust/dir_gate_tau_1.0_lambda_cons_0.1\
   --ece_bins 15 \
   --high_conf_th 0.9 \
   --dir_conservative_entropy \
   --dir_temp 1.0 \
   --alpha_offset 1.0 \
-  --dir_gate_tau 0.5 \
+  --dir_gate_tau 1.0 \
   --lambda_cons 0.1
 
 # works===================================================================

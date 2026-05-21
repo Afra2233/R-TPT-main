@@ -25,7 +25,7 @@ source activate rtpt
 #   --lambda_otpt 18
 
 python rtpt_o.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets DTD \
+  --test_sets Caltech101 \
   -a RN50 \
   -b 64 \
   --gpu 0 \

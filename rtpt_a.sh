@@ -15,7 +15,7 @@ source activate rtpt
 
 # works====================================================================
 # python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-#   --test_sets UCF101 \
+#   --test_sets Caltech101 \
 #   -a RN50 \
 #   -b 64 \
 #   --gpu 0 \
@@ -34,7 +34,7 @@ source activate rtpt
 
 
 python rtpt_a.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets UCF101 \
+  --test_sets Caltech101 \
   -a RN50 \
   -b 64 \
   --gpu 0 \

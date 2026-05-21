@@ -321,32 +321,32 @@ class ClipTestTimeTuning(nn.Module):
     def reset_classnames(self, classnames, arch):
         self.prompt_learner.reset_classnames(classnames, arch)
 # =================原始函数=============================================================
-    # def get_text_features(self):
-    #     text_features = []
-    #     prompts = self.prompt_learner()
-    #     tokenized_prompts = self.prompt_learner.tokenized_prompts
-    #     t_features = self.text_encoder(prompts, tokenized_prompts)
-    #     text_features.append(t_features / t_features.norm(dim=-1, keepdim=True))
-    #     text_features = torch.stack(text_features, dim=0)
-
-    #     return torch.mean(text_features, dim=0)
-# =================原始函数=============================================================
-
-# =================新函数=============================================================
     def get_text_features(self):
         text_features = []
         prompts = self.prompt_learner()
         tokenized_prompts = self.prompt_learner.tokenized_prompts
-
         t_features = self.text_encoder(prompts, tokenized_prompts)
-        t_features = t_features / t_features.norm(dim=-1, keepdim=True)
-
-        text_features.append(t_features)
+        text_features.append(t_features / t_features.norm(dim=-1, keepdim=True))
         text_features = torch.stack(text_features, dim=0)
 
-        self.textfeatures_ = torch.mean(text_features, dim=0)
+        return torch.mean(text_features, dim=0)
+# =================原始函数=============================================================
 
-        return self.textfeatures_
+# =================新函数=============================================================
+    # def get_text_features(self):
+    #     text_features = []
+    #     prompts = self.prompt_learner()
+    #     tokenized_prompts = self.prompt_learner.tokenized_prompts
+
+    #     t_features = self.text_encoder(prompts, tokenized_prompts)
+    #     t_features = t_features / t_features.norm(dim=-1, keepdim=True)
+
+    #     text_features.append(t_features)
+    #     text_features = torch.stack(text_features, dim=0)
+
+    #     self.textfeatures_ = torch.mean(text_features, dim=0)
+
+    #     return self.textfeatures_
 # =================新函数=============================================================
 
     def inference(self, image):

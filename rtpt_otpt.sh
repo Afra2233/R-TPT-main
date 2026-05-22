@@ -37,7 +37,7 @@ python rtpt_otpt.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --steps 7 \
   --output_dir output_results/rtpt_otpt_clean \
   --otpt \
-  --lambda_term 1.0
+  --lambda_term 18.0
 
 
 # fewshot_datasets = ['DTD', 'Flower102', 'Food101', 'Cars', 'SUN397', 

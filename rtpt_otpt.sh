@@ -13,19 +13,6 @@ module add anaconda3/2022.05
 source activate rtpt
 
 # clean
-python rtpt_otpt.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets DTD \
-  -a RN50 \
-  -b 64 \
-  --gpu 0 \
-  --ctx_init a_photo_of_a \
-  -p 50 \
-  --eps 0.0 \
-  --output_dir output_results/rtpt_otpt_clean \
-  --otpt \
-  --lambda_term 18.0
-
-# adv:
 # python rtpt_otpt.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --test_sets DTD \
 #   -a RN50 \
@@ -33,11 +20,24 @@ python rtpt_otpt.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --gpu 0 \
 #   --ctx_init a_photo_of_a \
 #   -p 50 \
-#   --eps 1.0 \
-#   --steps 7 \
-#   --output_dir output_results/rtpt_otpt_robust \
+#   --eps 0.0 \
+#   --output_dir output_results/rtpt_otpt_clean \
 #   --otpt \
 #   --lambda_term 18.0
+
+# adv:
+python rtpt_otpt.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+  --test_sets DTD \
+  -a RN50 \
+  -b 64 \
+  --gpu 0 \
+  --ctx_init a_photo_of_a \
+  -p 50 \
+  --eps 1.0 \
+  --steps 7 \
+  --output_dir output_results/rtpt_otpt_robust \
+  --otpt \
+  --lambda_term 18.0
 
 
 # fewshot_datasets = ['DTD', 'Flower102', 'Food101', 'Cars', 'SUN397', 

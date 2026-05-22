@@ -14,7 +14,7 @@ source activate rtpt
 
 # clean
 python rtpt_otpt.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets UCF101 \
+  --test_sets DTD \
   -a RN50 \
   -b 64 \
   --gpu 0 \
@@ -27,7 +27,7 @@ python rtpt_otpt.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 
 # adv:
 # python rtpt_otpt.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-#   --test_sets UCF101 \
+#   --test_sets DTD \
 #   -a RN50 \
 #   -b 64 \
 #   --gpu 0 \

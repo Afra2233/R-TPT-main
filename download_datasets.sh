@@ -99,18 +99,22 @@ log "Python 路径：$(which python)"
 log "Conda 环境：${CONDA_DEFAULT_ENV:-unknown}"
 log "数据集目录：$DATA"
 
+
+
 # ============================================================
 # Caltech101
 # ============================================================
 
 CALTECH_DIR="${DATA}/caltech-101"
-CALTECH_ARCHIVE="${TMP_DIR}/101_ObjectCategories.tar.gz"
+CALTECH_ARCHIVE="${TMP_DIR}/caltech-101.zip"
+CALTECH_TMP="${TMP_DIR}/caltech101_extract"
 
 mkdir -p "$CALTECH_DIR"
 
 log "开始处理 Caltech101"
 
 if [[ ! -d "${CALTECH_DIR}/101_ObjectCategories" ]]; then
+
     download_http \
         "https://data.caltech.edu/records/mzrjq-6wc02/files/caltech-101.zip?download=1" \
         "$CALTECH_ARCHIVE"
@@ -118,7 +122,36 @@ if [[ ! -d "${CALTECH_DIR}/101_ObjectCategories" ]]; then
     verify_file "$CALTECH_ARCHIVE"
 
     log "开始解压 Caltech101"
-    unzip -q -o "$CALTECH_ARCHIVE" -d "$CALTECH_TMP"
+
+    rm -rf "$CALTECH_TMP"
+    mkdir -p "$CALTECH_TMP"
+
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$CALTECH_ARCHIVE" -d "$CALTECH_TMP"
+    else
+        python -m zipfile -e "$CALTECH_ARCHIVE" "$CALTECH_TMP"
+    fi
+
+    FOUND_CALTECH_DIR="$(
+        find "$CALTECH_TMP" \
+            -type d \
+            -name "101_ObjectCategories" \
+            -print \
+            -quit
+    )"
+
+    if [[ -z "$FOUND_CALTECH_DIR" ]]; then
+        echo "解压后的目录结构："
+        find "$CALTECH_TMP" -maxdepth 4 -print
+        die "解压后没有找到 101_ObjectCategories"
+    fi
+
+    rm -rf "${CALTECH_DIR}/101_ObjectCategories"
+
+    mv "$FOUND_CALTECH_DIR" \
+        "${CALTECH_DIR}/101_ObjectCategories"
+
+    rm -rf "$CALTECH_TMP"
 else
     log "Caltech101 已经解压，跳过"
 fi
@@ -126,101 +159,3 @@ fi
 download_gdrive \
     "1hyarUivQE36mY6jSomru6Fjd-JzwcCzN" \
     "${CALTECH_DIR}/split_zhou_Caltech101.json"
-
-# ============================================================
-# DTD
-# ============================================================
-
-DTD_DIR="${DATA}/dtd"
-DTD_ARCHIVE="${TMP_DIR}/dtd-r1.0.1.tar.gz"
-
-log "开始处理 DTD"
-
-if [[ ! -d "${DTD_DIR}/images" ]]; then
-    download_http \
-        "https://www.robots.ox.ac.uk/~vgg/data/dtd/download/dtd-r1.0.1.tar.gz" \
-        "$DTD_ARCHIVE"
-
-    verify_file "$DTD_ARCHIVE"
-
-    log "开始解压 DTD"
-    tar -xzf "$DTD_ARCHIVE" -C "$DATA"
-else
-    log "DTD 已经解压，跳过"
-fi
-
-mkdir -p "$DTD_DIR"
-
-download_gdrive \
-    "1u3_QfB467jqHgNXC00UIzbLZRQCg2S7x" \
-    "${DTD_DIR}/split_zhou_DescribableTextures.json"
-
-# ============================================================
-# UCF101
-# ============================================================
-
-UCF_DIR="${DATA}/ucf101"
-UCF_ARCHIVE="${TMP_DIR}/UCF-101-midframes.zip"
-
-mkdir -p "$UCF_DIR"
-
-log "开始处理 UCF101"
-
-if [[ ! -d "${UCF_DIR}/UCF-101-midframes" ]]; then
-    download_gdrive \
-        "10Jqome3vtUA2keJkNanAiFpgbyC9Hc2O" \
-        "$UCF_ARCHIVE"
-
-    verify_file "$UCF_ARCHIVE"
-
-    log "开始解压 UCF101"
-
-    if command -v unzip >/dev/null 2>&1; then
-        unzip -q -o "$UCF_ARCHIVE" -d "$UCF_DIR"
-    else
-        python -m zipfile -e "$UCF_ARCHIVE" "$UCF_DIR"
-    fi
-else
-    log "UCF101 已经解压，跳过"
-fi
-
-download_gdrive \
-    "1I0S0q91hJfsV9Gf4xDIjgDq4AqBNJb1y" \
-    "${UCF_DIR}/split_zhou_UCF101.json"
-
-# ============================================================
-# 检查目录和文件
-# ============================================================
-
-log "开始检查数据集目录结构"
-
-[[ -d "${CALTECH_DIR}/101_ObjectCategories" ]] \
-    || die "缺少 ${CALTECH_DIR}/101_ObjectCategories"
-
-verify_file "${CALTECH_DIR}/split_zhou_Caltech101.json"
-
-[[ -d "${DTD_DIR}/images" ]] \
-    || die "缺少 ${DTD_DIR}/images"
-
-[[ -d "${DTD_DIR}/imdb" ]] \
-    || die "缺少 ${DTD_DIR}/imdb"
-
-[[ -d "${DTD_DIR}/labels" ]] \
-    || die "缺少 ${DTD_DIR}/labels"
-
-verify_file "${DTD_DIR}/split_zhou_DescribableTextures.json"
-
-[[ -d "${UCF_DIR}/UCF-101-midframes" ]] \
-    || die "缺少 ${UCF_DIR}/UCF-101-midframes"
-
-verify_file "${UCF_DIR}/split_zhou_UCF101.json"
-
-log "三个数据集均已下载并解压完成"
-
-echo
-echo "最终目录结构："
-find "$DATA" \
-    -maxdepth 2 \
-    -mindepth 1 \
-    \( -path "$TMP_DIR" -o -path "$TMP_DIR/*" \) -prune -o \
-    -print | sort

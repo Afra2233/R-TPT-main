@@ -184,6 +184,9 @@ download_gdrive \
 # ============================================================
 # Food101
 # ============================================================
+# ============================================================
+# Food101
+# ============================================================
 
 FOOD_ARCHIVE="${TMP_DIR}/food-101.tar.gz"
 FOOD_DIR="${DATA}/food-101"
@@ -192,7 +195,7 @@ log "开始处理 Food101"
 
 if [[ ! -d "${FOOD_DIR}/images" ]]; then
     download_http \
-        "https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/food-101.tar.gz" \
+        "https://data.vision.ee.ethz.ch/cvl/food-101.tar.gz" \
         "$FOOD_ARCHIVE"
 
     verify_file "$FOOD_ARCHIVE"

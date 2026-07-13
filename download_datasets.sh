@@ -112,7 +112,7 @@ log "开始处理 Caltech101"
 
 if [[ ! -d "${CALTECH_DIR}/101_ObjectCategories" ]]; then
     download_http \
-        "http://www.vision.caltech.edu/Image_Datasets/Caltech101/101_ObjectCategories.tar.gz" \
+        "https://data.caltech.edu/records/mzrjq-6wc02/files/caltech-101.zip?download=1" \
         "$CALTECH_ARCHIVE"
 
     verify_file "$CALTECH_ARCHIVE"

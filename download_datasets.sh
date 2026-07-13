@@ -118,7 +118,7 @@ if [[ ! -d "${CALTECH_DIR}/101_ObjectCategories" ]]; then
     verify_file "$CALTECH_ARCHIVE"
 
     log "开始解压 Caltech101"
-    tar -xzf "$CALTECH_ARCHIVE" -C "$CALTECH_DIR"
+    unzip -q -o "$CALTECH_ARCHIVE" -d "$CALTECH_TMP"
 else
     log "Caltech101 已经解压，跳过"
 fi

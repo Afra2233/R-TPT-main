@@ -15,25 +15,25 @@ source activate rtpt
 
 
 # ===================== step 0==============================
-python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets Aircraft \
-  -a RN50 \
-  -b 64 \
-  --gpu 0 \
-  --ctx_init a_photo_of_a \
-  -p 50 \
-  --eps 1.0 \
-  --tta_steps 0 \
-  --output_dir output_results/pure_rtpt_calibration
-
-  # ===================== step 1 ==============================
-#   python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-#   --test_sets DTD \
+# python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+#   --test_sets Aircraft \
 #   -a RN50 \
 #   -b 64 \
 #   --gpu 0 \
 #   --ctx_init a_photo_of_a \
 #   -p 50 \
-#   --eps 0.0 \
-#   --tta_steps 1 \
+#   --eps 1.0 \
+#   --tta_steps 0 \
 #   --output_dir output_results/pure_rtpt_calibration
+
+  # ===================== step 1 ==============================
+  python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+  --test_sets DTD \
+  -a RN50 \
+  -b 64 \
+  --gpu 0 \
+  --ctx_init a_photo_of_a \
+  -p 50 \
+  --eps 0.0 \
+  --tta_steps 1 \
+  --output_dir output_results/pure_rtpt_calibration

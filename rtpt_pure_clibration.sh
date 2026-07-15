@@ -15,7 +15,7 @@ source activate rtpt
 
 
 # ===================== step 0==============================
-python rtpt_calibration_pure.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --test_sets DTD \
   -a RN50 \
   -b 64 \
@@ -27,7 +27,7 @@ python rtpt_calibration_pure.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --output_dir output_results/pure_rtpt_calibration
 
   # ===================== step 1 ==============================
-#   python rtpt_calibration_pure.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+#   python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 #   --test_sets DTD \
 #   -a RN50 \
 #   -b 64 \

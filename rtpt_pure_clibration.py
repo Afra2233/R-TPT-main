@@ -854,12 +854,11 @@ def test_time_adapt_eval(
             dim=-1,
         )
 
-        rtpt_output = torch.bmm(
-            weight
-            .unsqueeze(-1)
-            .transpose(1, 2),
-            tuned_outputs.unsqueeze(0),
-        ).squeeze(1)
+        rtpt_output = torch.sum(
+            weight.unsqueeze(-1) * tuned_outputs,
+            dim=0,
+            keepdim=True,
+        )
 
         # ========================================================
         # Accuracy

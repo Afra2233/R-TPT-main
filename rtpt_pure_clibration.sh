@@ -16,13 +16,13 @@ source activate rtpt
 
 # ===================== step 0==============================
 python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets SUN397 \
+  --test_sets DTD \
   -a RN50 \
   -b 64 \
   --gpu 0 \
   --ctx_init a_photo_of_a \
   -p 50 \
-  --eps 0.0 \
+  --eps 1.0 \
   --tta_steps 0 \
   --output_dir output_results/pure_rtpt_calibration
 

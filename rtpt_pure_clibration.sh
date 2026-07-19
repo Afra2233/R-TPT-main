@@ -28,7 +28,7 @@ source activate rtpt
 
   # ===================== step 1 ==============================
   python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets Caltech101 \
+  --test_sets UCF101 \
   -a RN50 \
   -b 64 \
   --gpu 0 \
@@ -37,3 +37,6 @@ source activate rtpt
   --eps 0.0 \
   --tta_steps 1 \
   --output_dir output_results/pure_rtpt_calibration
+
+
+# DTD Caltech101	UCF101	Flower102	Food101	Pets	Aircraft	eurosat

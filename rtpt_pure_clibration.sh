@@ -34,7 +34,7 @@ source activate rtpt
   --gpu 0 \
   --ctx_init a_photo_of_a \
   -p 50 \
-  --eps 0.0 \
+  --eps 1.0 \
   --tta_steps 1 \
   --output_dir output_results/pure_rtpt_calibration
 

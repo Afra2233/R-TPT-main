@@ -28,7 +28,7 @@ source activate rtpt
 
   # ===================== step 1 ==============================
   python rtpt_pure_clibration.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets Flower102 \
+  --test_sets Food101 \
   -a RN50 \
   -b 64 \
   --gpu 0 \

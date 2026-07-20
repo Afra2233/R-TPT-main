@@ -338,32 +338,32 @@ def format_stats_for_log(stats, mode_name):
     )
 
     return "\n".join(lines)
-def test_time_tuning(model, inputs, optimizer, scaler, args, reliability=None):
-    """
-    Original R-TPT:
-        select confident views, then minimize mean entropy.
+# def test_time_tuning(model, inputs, optimizer, scaler, args, reliability=None):
+#     """
+#     Original R-TPT:
+#         select confident views, then minimize mean entropy.
 
-    Reliability-conservative R-TPT:
-        keep the same confident-view selection,
-        but weight selected views by R-TPT reliability score.
-    """
-    selected_idx = None
+#     Reliability-conservative R-TPT:
+#         keep the same confident-view selection,
+#         but weight selected views by R-TPT reliability score.
+#     """
+#     selected_idx = None
 
-    for j in range(args.tta_steps):
-        output_full = model(inputs)  # [N, C]
+#     for j in range(args.tta_steps):
+#         output_full = model(inputs)  # [N, C]
 
-        if selected_idx is not None:
-            output = output_full[selected_idx]
+#         if selected_idx is not None:
+#             output = output_full[selected_idx]
 
-            if reliability is not None:
-                rel_selected = reliability[selected_idx]
-            else:
-                rel_selected = None
-        else:
-            output, selected_idx = select_confident_samples(
-                output_full,
-                args.selection_p
-            )
+#             if reliability is not None:
+#                 rel_selected = reliability[selected_idx]
+#             else:
+#                 rel_selected = None
+#         else:
+#             output, selected_idx = select_confident_samples(
+#                 output_full,
+#                 args.selection_p
+#             )
 def test_time_tuning(model, inputs, optimizer, scaler, args, reliability=None):
     """
     Original R-TPT:

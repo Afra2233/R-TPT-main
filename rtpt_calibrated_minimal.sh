@@ -14,26 +14,14 @@ source activate rtpt
 
 cd /scratch/hpc/07/zhang303/R-TPT-main
 
-python rtpt_calibrated_minimal.py \
-  /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets Caltech101 \
-  -a RN50 \
-  -b 64 \
-  --gpu 0 \
-  --ctx_init a_photo_of_a \
-  -p 50 \
-  --eps 1.0 \
-  --steps 7 \
-  --tta_steps 1 \
-  --eval_both \
-  --selection_p 0.1 \
-  --agreement_strength 1.0 \
-  --agreement_temp 0.20 \
-  --entropy_floor_base 0.02 \
-  --entropy_floor_scale 0.08 \
-  --sample_lr_min 0.25 \
-  --sample_lr_power 1.0 \
-  --density_temp 0.01 \
-  --num_neighbors 20 \
-  --ece_bins 15 \
-  --output_dir output_results/rtpt_js_entropy_both
+python rtpt_shared_random_sensitivity_ece.py \
+    /path/to/dataset \
+    --test_sets Caltech101 \
+    --arch RN50 \
+    --batch-size 64 \
+    --selection_p 0.1 \
+    --sensitivity_drop_ratio 0.2 \
+    --sensitivity_rho 1e-3 \
+    --eps 1.0 \
+    --steps 7 \
+    --gpu 0

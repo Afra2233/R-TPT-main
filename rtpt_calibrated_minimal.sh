@@ -14,7 +14,7 @@ source activate rtpt
 
 cd /scratch/hpc/07/zhang303/R-TPT-main
 
-python rtpt_shared_random_sensitivity_ece.py \
+python rtpt_calibrated_minimal.py \
     /path/to/dataset \
     --test_sets Caltech101 \
     --arch RN50 \

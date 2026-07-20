@@ -14,7 +14,7 @@ source activate rtpt
 
 cd /scratch/hpc/07/zhang303/R-TPT-main
 
-python rtpt_disagreement_entropy_both.py \
+python rtpt_calibrated_minimal.py \
   /scratch/hpc/07/zhang303/R-TPT-main/dataset \
   --test_sets UCF101 \
   -a RN50 \

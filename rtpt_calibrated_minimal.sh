@@ -16,7 +16,7 @@ cd /scratch/hpc/07/zhang303/R-TPT-main
 
 python rtpt_calibrated_minimal.py \
     /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-    --test_sets Caltech101 \
+    --test_sets UCF101 \
     --arch RN50 \
     --batch-size 64 \
     --selection_p 0.1 \

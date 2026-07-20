@@ -15,7 +15,7 @@ source activate rtpt
 cd /scratch/hpc/07/zhang303/R-TPT-main
 
 python rtpt_calibrated_minimal.py \
-    /path/to/dataset \
+    /scratch/hpc/07/zhang303/R-TPT-main/dataset \
     --test_sets Caltech101 \
     --arch RN50 \
     --batch-size 64 \

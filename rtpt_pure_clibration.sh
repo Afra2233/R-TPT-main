@@ -36,6 +36,7 @@ source activate rtpt
   -p 50 \
   --eps 1.0 \
   --tta_steps 1 \
+  --steps 7 \
   --output_dir output_results/pure_rtpt_calibration
 
 

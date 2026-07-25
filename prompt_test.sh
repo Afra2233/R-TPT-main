@@ -25,7 +25,7 @@ source activate rtpt
     
 # adv
 python prompt_test.py /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-    --test_sets DTD \
+    --test_sets UCF101 \
     --gpu 0 \
     --eps 1 \
     --steps 7 \

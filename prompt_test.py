@@ -120,7 +120,189 @@ def entropy_avg(outputs):
 
     return batch_entropy.mean()
 
+def prediction_agreement(logits):
+    """
+    logits: [num_views, num_classes]
 
+    返回：
+    top1_agreement：多数类别所占比例
+    prob_agreement：完整概率分布的一致程度
+    """
+    probs = logits.softmax(dim=-1)
+
+    # Top-1 voting agreement
+    predictions = probs.argmax(dim=-1)
+    counts = torch.bincount(
+        predictions,
+        minlength=probs.size(1)
+    )
+    top1_agreement = counts.max().float() / predictions.numel()
+
+    # 每个视图与平均预测之间的 JS divergence
+    mean_probs = probs.mean(dim=0, keepdim=True)
+
+    eps = 1e-8
+    probs_safe = probs.clamp_min(eps)
+    mean_safe = mean_probs.expand_as(probs).clamp_min(eps)
+
+    mixture = 0.5 * (probs_safe + mean_safe)
+
+    js = 0.5 * (
+        (
+            probs_safe
+            * (probs_safe.log() - mixture.log())
+        ).sum(dim=-1)
+        +
+        (
+            mean_safe
+            * (mean_safe.log() - mixture.log())
+        ).sum(dim=-1)
+    )
+
+    # 越接近 1，预测概率分布越一致
+    prob_agreement = (1.0 - js.mean() / np.log(2.0)).clamp(0.0, 1.0)
+
+   
+    return {
+        "top1_agreement": top1_agreement.item(),
+        "prob_agreement": prob_agreement.item(),
+        "num_unique_predictions": predictions.unique().numel(),
+    }
+def flatten_gradients(grads, params):
+    flattened = []
+
+    for grad, param in zip(grads, params):
+        if grad is None:
+            flattened.append(
+                torch.zeros_like(param).reshape(-1)
+            )
+        else:
+            flattened.append(
+                grad.detach().reshape(-1)
+            )
+
+    return torch.cat(flattened)
+
+
+def prompt_gradient_agreement(
+    model,
+    inputs,
+    selection_p=0.1,
+    max_views=6
+):
+    """
+    对低熵视图逐个计算：
+        g_i = d H(p_i) / d prompt
+
+    返回各视图 prompt gradient 的方向一致程度。
+    """
+
+    prompt_params = [
+        param
+        for name, param in model.named_parameters()
+        if "prompt_learner" in name
+        and param.requires_grad
+    ]
+    if len(prompt_params) == 0:
+        raise RuntimeError(
+            "No trainable prompt parameters found."
+        )
+    # 这里不能放在 torch.no_grad() 内
+    logits = model(inputs)
+
+    # 与 R-TPT 使用相同的低熵视图
+    _, selected_idx = select_confident_samples(
+        logits.detach(),
+        selection_p
+    )
+
+    selected_idx = selected_idx[:max_views]
+
+    grad_vectors = []
+
+    for position, view_idx in enumerate(selected_idx.tolist()):
+        view_logits = logits[
+            view_idx:view_idx + 1
+        ]
+
+        view_loss = entropy_avg(view_logits)
+
+        grads = torch.autograd.grad(
+            view_loss,
+            prompt_params,
+            retain_graph=(
+                position < len(selected_idx) - 1
+            ),
+            create_graph=False,
+            allow_unused=True
+        )
+
+        grad_vector = flatten_gradients(
+            grads,
+            prompt_params
+        )
+
+        grad_vectors.append(grad_vector)
+
+    if len(grad_vectors) < 2:
+        return {
+            "gradient_agreement": float("nan"),
+            "negative_gradient_ratio": float("nan"),
+            "consensus_agreement": float("nan"),
+        }
+
+    gradients = torch.stack(grad_vectors)
+
+    grad_norms = gradients.norm(
+        dim=1,
+        keepdim=True
+    ).clamp_min(1e-12)
+
+    normalized_gradients = gradients / grad_norms
+
+    # 两两 cosine similarity
+    cosine_matrix = (
+        normalized_gradients
+        @ normalized_gradients.t()
+    )
+
+    mask = ~torch.eye(
+        cosine_matrix.size(0),
+        dtype=torch.bool,
+        device=cosine_matrix.device
+    )
+
+    pairwise_cosines = cosine_matrix[mask]
+
+    gradient_agreement = pairwise_cosines.mean()
+
+    negative_gradient_ratio = (
+        pairwise_cosines < 0
+    ).float().mean()
+
+    # 每个视图与平均更新方向的相似度
+    consensus_gradient = gradients.mean(dim=0)
+
+    consensus_gradient = (
+        consensus_gradient
+        / consensus_gradient.norm().clamp_min(1e-12)
+    )
+
+    consensus_cosines = (
+        normalized_gradients
+        @ consensus_gradient
+    )
+
+    return {
+        "gradient_agreement":
+            gradient_agreement.item(),
+
+        "negative_gradient_ratio":
+            negative_gradient_ratio.item(),
+
+        "consensus_agreement":
+            consensus_cosines.mean().item(),
+    }
 def test_time_tuning(model, inputs, optimizer, scaler, args):
     """
     Pure/original R-TPT prompt tuning.
@@ -150,7 +332,75 @@ def test_time_tuning(model, inputs, optimizer, scaler, args):
         loss.backward()
         optimizer.step()
 
+def collect_agreement_statistics(
+    model,
+    images,
+    args
+):
+    # Prediction agreement
+    with torch.no_grad():
+        logits = model(images)
 
+        all_prediction_stats = (
+            prediction_agreement(logits)
+        )
+
+        selected_logits, selected_idx = (
+            select_confident_samples(
+                logits,
+                args.selection_p
+            )
+        )
+
+        selected_prediction_stats = (
+            prediction_agreement(
+                selected_logits
+            )
+        )
+
+    # Prompt-gradient agreement
+    gradient_stats = (
+        prompt_gradient_agreement(
+            model=model,
+            inputs=images,
+            selection_p=args.selection_p,
+            max_views=args.diag_grad_views
+        )
+    )
+
+    return {
+        "pred_agreement_all":
+            all_prediction_stats[
+                "top1_agreement"
+            ],
+
+        "prob_agreement_all":
+            all_prediction_stats[
+                "prob_agreement"
+            ],
+
+        "unique_predictions_all":
+            all_prediction_stats[
+                "num_unique_predictions"
+            ],
+
+        "pred_agreement_selected":
+            selected_prediction_stats[
+                "top1_agreement"
+            ],
+
+        "prob_agreement_selected":
+            selected_prediction_stats[
+                "prob_agreement"
+            ],
+
+        "unique_predictions_selected":
+            selected_prediction_stats[
+                "num_unique_predictions"
+            ],
+
+        **gradient_stats
+    }
 def compute_ece(confidences, corrects, n_bins=15):
     """
     Expected Calibration Error (ECE), returned in percentage points.
@@ -517,6 +767,11 @@ def main():
     del val_dataset, val_loader
 
     clip_stats = results["clip_stats"]
+
+    prompt_only_stats = results[
+        "prompt_only_stats"
+    ]
+
     rtpt_stats = results["rtpt_stats"]
 
     mode_name = (
@@ -532,6 +787,17 @@ def main():
         ),
     )
 
+    prompt_only_log = format_stats(
+        prompt_only_stats,
+        (
+            "Prompt Tuning + Uniform Ensemble "
+            "{} / TTA Step {}"
+        ).format(
+            mode_name,
+            args.tta_steps,
+        ),
+    )
+
     rtpt_log = format_stats(
         rtpt_stats,
         "R-TPT {} / TTA Step {}".format(
@@ -542,42 +808,44 @@ def main():
 
     comparison_log = (
         "========== Comparison ==========\n"
-        "Acc change: {:+.4f}\n"
-        "ECE change: {:+.4f}\n"
-        "AvgConf change: {:+.4f}\n"
-        "WrongConf change: {:+.4f}\n"
-        "CorrectConf change: {:+.4f}\n"
-        "High-confidence wrong change (all): {:+.4f}\n"
-        "High-confidence among wrong change: {:+.4f}"
+        "Prompt-Only vs CLIP Acc: {:+.4f}\n"
+        "R-TPT vs CLIP Acc: {:+.4f}\n"
+        "R-TPT vs Prompt-Only Acc: {:+.4f}\n"
+        "R-TPT vs CLIP ECE: {:+.4f}\n"
+        "R-TPT vs CLIP AvgConf: {:+.4f}\n"
+        "R-TPT vs CLIP WrongConf: {:+.4f}\n"
+        "R-TPT vs CLIP CorrectConf: {:+.4f}\n"
+        "R-TPT vs CLIP high-confidence wrong: {:+.4f}"
     ).format(
-        rtpt_stats["acc"] - clip_stats["acc"],
-        rtpt_stats["ece"] - clip_stats["ece"],
-        rtpt_stats["avg_conf"] - clip_stats["avg_conf"],
-        rtpt_stats["wrong_conf"] - clip_stats["wrong_conf"],
-        (
-            rtpt_stats["correct_conf"]
-            - clip_stats["correct_conf"]
-        ),
-        (
-            rtpt_stats[
-                "wrong_high_conf_rate_all"
-            ]
-            - clip_stats[
-                "wrong_high_conf_rate_all"
-            ]
-        ),
-        (
-            rtpt_stats[
-                "wrong_high_conf_rate_wrong_only"
-            ]
-            - clip_stats[
-                "wrong_high_conf_rate_wrong_only"
-            ]
-        ),
+        prompt_only_stats["acc"]
+        - clip_stats["acc"],
+
+        rtpt_stats["acc"]
+        - clip_stats["acc"],
+
+        rtpt_stats["acc"]
+        - prompt_only_stats["acc"],
+
+        rtpt_stats["ece"]
+        - clip_stats["ece"],
+
+        rtpt_stats["avg_conf"]
+        - clip_stats["avg_conf"],
+
+        rtpt_stats["wrong_conf"]
+        - clip_stats["wrong_conf"],
+
+        rtpt_stats["correct_conf"]
+        - clip_stats["correct_conf"],
+
+        rtpt_stats["wrong_high_conf_rate_all"]
+        - clip_stats["wrong_high_conf_rate_all"],
     )
 
     final_log = (
         clip_log
+        + "\n\n"
+        + prompt_only_log
         + "\n\n"
         + rtpt_log
         + "\n\n"
@@ -592,49 +860,28 @@ def main():
     print(final_log + "\n")
 
     save_log = {
-        "mode": mode_name,
-        "tta_steps": args.tta_steps,
-        "clip_stats": clip_stats,
-        "rtpt_stats": rtpt_stats,
-        "comparison": {
-            "acc_change": (
-                rtpt_stats["acc"]
-                - clip_stats["acc"]
-            ),
-            "ece_change": (
-                rtpt_stats["ece"]
-                - clip_stats["ece"]
-            ),
-            "avg_conf_change": (
-                rtpt_stats["avg_conf"]
-                - clip_stats["avg_conf"]
-            ),
-            "wrong_conf_change": (
-                rtpt_stats["wrong_conf"]
-                - clip_stats["wrong_conf"]
-            ),
-            "correct_conf_change": (
-                rtpt_stats["correct_conf"]
-                - clip_stats["correct_conf"]
-            ),
-            "wrong_high_conf_rate_all_change": (
-                rtpt_stats[
-                    "wrong_high_conf_rate_all"
-                ]
-                - clip_stats[
-                    "wrong_high_conf_rate_all"
-                ]
-            ),
-            "wrong_high_conf_rate_wrong_only_change": (
-                rtpt_stats[
-                    "wrong_high_conf_rate_wrong_only"
-                ]
-                - clip_stats[
-                    "wrong_high_conf_rate_wrong_only"
-                ]
-            ),
-        },
-    }
+    "mode": mode_name,
+    "tta_steps": args.tta_steps,
+
+    "clip_stats": clip_stats,
+    "prompt_only_stats": prompt_only_stats,
+    "rtpt_stats": rtpt_stats,
+
+    "comparison": {
+        "prompt_only_vs_clip_acc": (
+            prompt_only_stats["acc"]
+            - clip_stats["acc"]
+        ),
+        "rtpt_vs_clip_acc": (
+            rtpt_stats["acc"]
+            - clip_stats["acc"]
+        ),
+        "rtpt_vs_prompt_only_acc": (
+            rtpt_stats["acc"]
+            - prompt_only_stats["acc"]
+        ),
+    },
+}
 
     torch.save(
         save_log,
@@ -674,12 +921,17 @@ def test_time_adapt_eval(
         ":6.2f",
         Summary.AVERAGE,
     )
-    
+    prompt_only1 = AverageMeter(
+    "PromptOnlyAcc@1",
+    ":6.2f",
+    Summary.AVERAGE,
+    )
     progress = ProgressMeter(
         len(val_loader),
         [
             batch_time,
             top1,
+            prompt_only1,
             tpt1,
         ],
         prefix="Test: ",
@@ -692,6 +944,11 @@ def test_time_adapt_eval(
     clip_correct_list = []
     clip_pred_list = []
 
+    # 只进行 prompt tuning，不进行 reliability weighting
+    prompt_only_conf_list = []
+    prompt_only_correct_list = []
+    prompt_only_pred_list = []
+
     rtpt_conf_list = []
     rtpt_correct_list = []
     rtpt_pred_list = []
@@ -702,6 +959,7 @@ def test_time_adapt_eval(
     # Evaluation setup
     # ============================================================
     model.eval()
+    diagnostic_results = []
 
     if args.eps > 0.0:
         assert args.steps > 0
@@ -812,15 +1070,26 @@ def test_time_adapt_eval(
 
             untuned_outputs = model(images)
 
-        # ========================================================
-        # Pure R-TPT test-time prompt tuning
-        #
-        # tta_steps = 0:
-        #   no prompt update
-        #
-        # tta_steps >= 1:
-        #   original entropy-minimization update
-        # ========================================================
+
+# ========================================================
+# Agreement diagnostics：必须放在 prompt tuning 之前
+# ========================================================
+        diagnostics = None
+
+        if (
+            args.diagnostics
+            and i < args.diag_max_samples
+        ):
+            diagnostics = collect_agreement_statistics(
+                model=model,
+                images=images,
+                args=args,
+            )
+
+            # 防御性清理；autograd.grad 通常不会写入 param.grad
+            optimizer.zero_grad(set_to_none=True)
+
+
         if args.tta_steps > 0:
             test_time_tuning(
                 model,
@@ -834,6 +1103,19 @@ def test_time_adapt_eval(
                 tuned_outputs = model(images)
         else:
             tuned_outputs = untuned_outputs
+
+
+        # ========================================================
+        # Prompt-Only
+        #
+        # 使用所有视图，但不使用 reliability weighting。
+        # 每个视图具有相同权重。
+        # ========================================================
+        prompt_only_output = tuned_outputs.mean(
+            dim=0,
+            keepdim=True,
+        )
+                
 
         # ========================================================
         # Original R-TPT reliability-weighted ensemble
@@ -869,16 +1151,25 @@ def test_time_adapt_eval(
             topk=(1, 5),
         )
 
+        prompt_only_acc1, _ = accuracy(
+            prompt_only_output,
+            target,
+            topk=(1, 5),
+        )
+
         rtpt_acc1, _ = accuracy(
             rtpt_output,
             target,
             topk=(1, 5),
         )
 
-        # One dataset sample is being evaluated here,
-        # so use n=1 for sample-level averages.
         top1.update(
             acc1[0],
+            1,
+        )
+
+        prompt_only1.update(
+            prompt_only_acc1[0],
             1,
         )
 
@@ -886,11 +1177,13 @@ def test_time_adapt_eval(
             rtpt_acc1[0],
             1,
         )
-
-        # ========================================================
+            # ========================================================
         # Per-sample calibration records
         # ========================================================
         with torch.no_grad():
+            # =========================
+            # CLIP
+            # =========================
             clip_prob = torch.softmax(
                 clip_output,
                 dim=1,
@@ -900,10 +1193,27 @@ def test_time_adapt_eval(
                 clip_prob.max(dim=1)
             )
 
-            clip_correct = (
-                clip_pred.eq(target)
+            clip_correct = clip_pred.eq(target)
+
+            # =========================
+            # Prompt tuning + uniform ensemble
+            # =========================
+            prompt_only_prob = torch.softmax(
+                prompt_only_output,
+                dim=1,
             )
 
+            prompt_only_conf, prompt_only_pred = (
+                prompt_only_prob.max(dim=1)
+            )
+
+            prompt_only_correct = (
+                prompt_only_pred.eq(target)
+            )
+
+            # =========================
+            # Full R-TPT
+            # =========================
             rtpt_prob = torch.softmax(
                 rtpt_output,
                 dim=1,
@@ -913,30 +1223,37 @@ def test_time_adapt_eval(
                 rtpt_prob.max(dim=1)
             )
 
-            rtpt_correct = (
-                rtpt_pred.eq(target)
-            )
+            rtpt_correct = rtpt_pred.eq(target)
 
+            # =========================
+            # Save per-sample outputs
+            # =========================
             clip_conf_list.append(
                 clip_conf.detach().cpu()
             )
-
             clip_correct_list.append(
                 clip_correct.detach().cpu()
             )
-
             clip_pred_list.append(
                 clip_pred.detach().cpu()
+            )
+
+            prompt_only_conf_list.append(
+                prompt_only_conf.detach().cpu()
+            )
+            prompt_only_correct_list.append(
+                prompt_only_correct.detach().cpu()
+            )
+            prompt_only_pred_list.append(
+                prompt_only_pred.detach().cpu()
             )
 
             rtpt_conf_list.append(
                 rtpt_conf.detach().cpu()
             )
-
             rtpt_correct_list.append(
                 rtpt_correct.detach().cpu()
             )
-
             rtpt_pred_list.append(
                 rtpt_pred.detach().cpu()
             )
@@ -944,6 +1261,36 @@ def test_time_adapt_eval(
             label_list.append(
                 target.detach().cpu()
             )
+
+            if diagnostics is not None:
+                diagnostic_results.append({
+                    "sample_index": int(i),
+                    "eps": float(args.eps),
+                    "target": int(target.item()),
+
+                    "clip_prediction": int(
+                        clip_pred.item()
+                    ),
+                    "clip_correct": int(
+                        clip_correct.item()
+                    ),
+
+                    "prompt_only_prediction": int(
+                        prompt_only_pred.item()
+                    ),
+                    "prompt_only_correct": int(
+                        prompt_only_correct.item()
+                    ),
+
+                    "rtpt_prediction": int(
+                        rtpt_pred.item()
+                    ),
+                    "rtpt_correct": int(
+                        rtpt_correct.item()
+                    ),
+
+                    **diagnostics,
+                })
 
         # ========================================================
         # Timing and logging
@@ -1008,6 +1355,17 @@ def test_time_adapt_eval(
     clip_pred_all = torch.cat(
         clip_pred_list
     )
+    prompt_only_conf_all = torch.cat(
+        prompt_only_conf_list
+    )
+
+    prompt_only_correct_all = torch.cat(
+        prompt_only_correct_list
+    )
+
+    prompt_only_pred_all = torch.cat(
+        prompt_only_pred_list
+    )
 
     rtpt_conf_all = torch.cat(
         rtpt_conf_list
@@ -1031,6 +1389,12 @@ def test_time_adapt_eval(
         high_conf_th=args.high_conf_th,
         n_bins=args.ece_bins,
     )
+    prompt_only_stats = summarize_calibration_stats(
+    confidences=prompt_only_conf_all,
+    corrects=prompt_only_correct_all,
+    high_conf_th=args.high_conf_th,
+    n_bins=args.ece_bins,
+    )
 
     rtpt_stats = summarize_calibration_stats(
         confidences=rtpt_conf_all,
@@ -1049,6 +1413,19 @@ def test_time_adapt_eval(
             clip_correct_all.numpy()
         ),
         "clip_pred": clip_pred_all.numpy(),
+        "prompt_only_conf": (
+            prompt_only_conf_all.numpy()
+        ),
+
+        "prompt_only_correct": (
+            prompt_only_correct_all.numpy()
+        ),
+
+        "prompt_only_pred": (
+            prompt_only_pred_all.numpy()
+        ),
+
+        
         "rtpt_conf": rtpt_conf_all.numpy(),
         "rtpt_correct": (
             rtpt_correct_all.numpy()
@@ -1056,6 +1433,7 @@ def test_time_adapt_eval(
         "rtpt_pred": rtpt_pred_all.numpy(),
         "label": label_all.numpy(),
         "clip_stats": clip_stats,
+        "prompt_only_stats": prompt_only_stats,
         "rtpt_stats": rtpt_stats,
     }
 
@@ -1066,9 +1444,24 @@ def test_time_adapt_eval(
             "calibration_analysis.pt",
         ),
     )
+    if args.diagnostics:
+        diagnostic_path = os.path.join(
+            args.output_dir,
+            "agreement_diagnostics.pt",
+        )
 
+        torch.save(
+            diagnostic_results,
+            diagnostic_path,
+        )
+
+        print(
+            "Agreement diagnostics saved to:",
+            diagnostic_path,
+        )
     return {
         "clip_stats": clip_stats,
+        "prompt_only_stats": prompt_only_stats,
         "rtpt_stats": rtpt_stats,
     }
 
@@ -1262,6 +1655,26 @@ if __name__ == "__main__":
             "temperature for original R-TPT "
             "view-ensemble weights"
         ),
+    )
+
+    parser.add_argument(
+    "--diagnostics",
+    action="store_true",
+    help="collect view agreement diagnostics",
+    )
+
+    parser.add_argument(
+        "--diag_max_samples",
+        type=int,
+        default=200,
+        help="maximum number of diagnostic samples",
+    )
+
+    parser.add_argument(
+        "--diag_grad_views",
+        type=int,
+        default=6,
+        help="number of selected views used for gradient agreement",
     )
 
     main()

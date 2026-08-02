@@ -16,7 +16,7 @@ cd /scratch/hpc/07/zhang303/R-TPT-main
 
 python rtpt_temperature.py \
   /scratch/hpc/07/zhang303/R-TPT-main/dataset \
-  --test_sets Flower102 \
+  --test_sets Pets \
   -a RN50 \
   -b 64 \
   --gpu 0 \

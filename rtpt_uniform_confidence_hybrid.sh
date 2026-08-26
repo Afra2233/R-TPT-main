@@ -14,7 +14,7 @@ source activate rtpt
 
 python rtpt_uniform_confidence_hybrid.py \
 /scratch/hpc/07/zhang303/R-TPT-main/dataset \
---test_sets DTD \
+--test_sets Flower102 \
 -a RN50 \
 -b 64 \
 --gpu 0 \

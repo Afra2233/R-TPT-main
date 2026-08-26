@@ -14,7 +14,7 @@ source activate rtpt
 
 python rtpt_uniform_confidence_hybrid.py \
 /scratch/hpc/07/zhang303/R-TPT-main/dataset \
---test_sets Pets \
+--test_sets Aircraft \
 -a RN50 \
 -b 64 \
 --gpu 0 \

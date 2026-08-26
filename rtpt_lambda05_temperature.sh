@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH --job-name=rtpt_lambda05_temperature
+#SBATCH -p gpu-medium
+#SBATCH --nodes=1
+#SBATCH --gres=gpu:tesla_v100-pcie-32gb:1
+#SBATCH --time=48:00:00
+#SBATCH --mem=96G
+#SBATCH --cpus-per-task=8
+#SBATCH -o /scratch/hpc/07/zhang303/R-TPT-main/%x-%j.out
+#SBATCH -e /scratch/hpc/07/zhang303/R-TPT-main/%x-%j.err
+
+module add anaconda3/2022.05
+source activate rtpt
+
+python rtpt_lambda05_temperature.py \
+/scratch/hpc/07/zhang303/R-TPT-main/dataset \
+--test_sets UCF101 \
+-a RN50 \
+-b 64 \
+--gpu 0 \
+--ctx_init a_photo_of_a \
+-p 50 \
+--eps 1.0 \
+--steps 7 \
+--output_dir 'output_results/rtpt_lambda05'

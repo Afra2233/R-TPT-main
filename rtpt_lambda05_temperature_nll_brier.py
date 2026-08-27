@@ -586,7 +586,7 @@ def test_time_adapt_eval(val_loader, model, model_state, optimizer, optim_state,
         lambda05_target_conf = rtpt_conf.clone()
 
         can_flatten = agree & (rtpt_conf > uniform_conf)
-        midpoint_conf = uniform_conf + 0.5 * (rtpt_conf - uniform_conf)
+        midpoint_conf = uniform_conf + 0.1 * (rtpt_conf - uniform_conf)
         lambda05_target_conf = torch.where(
             can_flatten,
             midpoint_conf,

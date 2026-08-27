@@ -14,7 +14,7 @@ source activate rtpt
 	# DTD	Caltech101	UCF101	Flower102	Pets	Aircraft	Food101	Pets	Aircraft	eurosat	Cars	SUN397
 python rtpt_lambda05_temperature_nll_brier.py \
 /scratch/hpc/07/zhang303/R-TPT-main/dataset \
---test_sets Caltech101 \
+--test_sets UCF101 \
 -a RN50 \
 -b 64 \
 --gpu 0 \

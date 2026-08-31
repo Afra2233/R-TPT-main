@@ -12,6 +12,20 @@
 module add anaconda3/2022.05
 source activate rtpt
 	# DTD	Caltech101	UCF101	Flower102	Pets	Aircraft	Food101	Pets	Aircraft	eurosat	Cars	SUN397
+# adv
+# python rtpt_lambda05_temperature_nll_brier.py \
+# /scratch/hpc/07/zhang303/R-TPT-main/dataset \
+# --test_sets Aircraft \
+# -a RN50 \
+# -b 64 \
+# --gpu 0 \
+# --ctx_init a_photo_of_a \
+# -p 50 \
+# --eps 1.0 \
+# --steps 7 \
+# --output_dir 'output_results/rtpt_lambda05_nll_brier'
+
+# clean
 python rtpt_lambda05_temperature_nll_brier.py \
 /scratch/hpc/07/zhang303/R-TPT-main/dataset \
 --test_sets Aircraft \
@@ -20,6 +34,5 @@ python rtpt_lambda05_temperature_nll_brier.py \
 --gpu 0 \
 --ctx_init a_photo_of_a \
 -p 50 \
---eps 1.0 \
---steps 7 \
---output_dir 'output_results/rtpt_lambda05_nll_brier'
+--eps 0.0 \
+--output_dir 'output_results/rtpt_lambda05_nll_brier_clean'

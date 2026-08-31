@@ -28,7 +28,7 @@ source activate rtpt
 # clean
 python rtpt_lambda05_temperature_nll_brier.py \
 /scratch/hpc/07/zhang303/R-TPT-main/dataset \
---test_sets Aircraft \
+--test_sets DTD \
 -a RN50 \
 -b 64 \
 --gpu 0 \
